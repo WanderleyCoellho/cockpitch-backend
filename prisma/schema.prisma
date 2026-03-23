@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String           @id @default(cuid())
+  email                String           @unique
+  passwordHash         String
+  name                 String
+  role                 UserRole         @default(PROVIDER)
+  planTier             PlanTier         @default(FREE)
+  billingStatus        BillingStatus    @default(INACTIVE)
+  licensePolicy        LicensePolicy    @default(STANDARD)
+  licensePolicyNote    String?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  providers            Provider[]
+  paymentReceipts      PaymentReceipt[]
+}
+
+model PaymentReceipt {
+  id                    String            @id @default(cuid())
+  userId                String
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileUrl               String
+  storedFilename        String
+  originalFilename      String
+  mimeType              String
+  status                ReceiptStatus     @default(SUBMITTED)
+  riskLevel             ReceiptRiskLevel  @default(MEDIUM)
+  analysisSummary       String?
+  extractedText         String?
+  detectedAmount        String?
+  detectedTransferDate  String?
+  payerName             String?
+  recipientName         String?
+  reviewerName          String?
+  reviewerNotes         String?
+  reviewedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Provider {
+  id                  String      @id @default(cuid())
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  email               String
+  whatsapp            String?
+  instagram           String?
+  city                String?
+  logoUrl             String?
+  photoUrl            String?
+  shortDescription    String?
+  aboutTitle          String?
+  aboutSubtitle       String?
+  aboutText           String?
+  styleText           String?
+  heroVideoUrl        String?
+  deliveryTimes       String?
+  differentialsTitle  String?
+  differentialsText   String?
+  chips               Json?
+  testimonials        Json?
+  differentialsMedia  Json?
+  aboutPortfolioMedia Json?
+  partners            Json?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  packages            Package[]
+  proposals           Proposal[]
+  packageLabel        String?
+
+  @@index([userId])
+}
+
+model Package {
+  id             String        @id @default(cuid())
+  providerId     String
+  provider       Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  price          String
+  isHighlighted  Boolean       @default(false)
+  highlightLabel String?
+  highlightColor String?
+  order          Int           @default(0)
+  mediaUrl       String?
+  mediaType      String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          PackageItem[]
+  proposals      Proposal[]    @relation("ProposalPackages")
+
+  @@index([providerId])
+}
+
+model PackageItem {
+  id         String   @id @default(cuid())
+  packageId  String
+  package    Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  name       String
+  isCourtesy Boolean  @default(false)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([packageId])
+}
+
+model Proposal {
+  id                  String            @id @default(cuid())
+  providerId          String
+  provider            Provider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  clientName          String
+  slug                String            @unique
+  serviceDate         String?
+  validityDays        Int               @default(30)
+  status              ProposalStatus    @default(ABERTA)
+  commercialStatus    CommercialStatus  @default(SEM_RESPOSTA)
+  heroVideoUrl        String?
+  weddingPhotoUrl     String?
+  theme               String?           @default("dark_luxury")
+  themeCustom         Json?
+  sections            Json?
+  backstageMedia      Json?
+  differentialsMedia  Json?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  packageIds          Package[]         @relation("ProposalPackages")
+  views               ProposalView[]
+
+  @@index([providerId])
+  @@index([slug])
+}
+
+model ProposalView {
+  id           String   @id @default(cuid())
+  proposalId   String
+  proposal     Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proposalSlug String
+  sessionId    String
+  viewedAt     DateTime
+
+  @@index([proposalId])
+  @@index([proposalSlug])
+}
+
+enum UserRole {
+  PROVIDER
+  CUSTOMER
+  ADMIN
+}
+
+enum ProposalStatus {
+  ABERTA
+  FECHADA
+  EXPIRADA
+  ARQUIVADA
+}
+
+enum CommercialStatus {
+  SEM_RESPOSTA
+  NEGOCIANDO
+  ACEITA
+  NEGADA
+  PERSONALIZADO
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  PRO
+  AGENCY
+}
+
+enum BillingStatus {
+  INACTIVE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum LicensePolicy {
+  STANDARD
+  COURTESY
+}
+
+enum ReceiptStatus {
+  SUBMITTED
+  ANALYZED
+  NEEDS_HUMAN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ReceiptRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
