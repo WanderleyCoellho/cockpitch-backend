@@ -81,6 +81,7 @@ model Provider {
   packages            Package[]
   proposals           Proposal[]
   packageLabel        String?
+  contactInfo         Json?
 
   @@index([userId])
 }
@@ -136,6 +137,8 @@ model Proposal {
   sections            Json?
   backstageMedia      Json?
   differentialsMedia  Json?
+  videoSoundEnabled   Boolean           @default(false)
+  sectionsConfig      Json?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   packageIds          Package[]         @relation("ProposalPackages")

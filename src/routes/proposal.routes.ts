@@ -27,7 +27,9 @@ const createProposalSchema = z.object({
     themeCustom: z.record(z.string(), z.any()).nullable().optional(),
     sections: z.array(z.any()).nullable().optional(),
     backstageMedia: z.array(mediaItemSchema).nullable().optional(),
-    differentialsMedia: z.array(mediaItemSchema).nullable().optional()
+    differentialsMedia: z.array(mediaItemSchema).nullable().optional(),
+    videoSoundEnabled: z.boolean().optional(),
+    sectionsConfig: z.record(z.string(), z.any()).nullable().optional()
 })
 
 const updateProposalSchema = createProposalSchema.partial().refine(
@@ -168,6 +170,8 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
             sections: toNullableJsonInput(parsed.data.sections),
             backstageMedia: toNullableJsonInput(parsed.data.backstageMedia),
             differentialsMedia: toNullableJsonInput(parsed.data.differentialsMedia),
+            videoSoundEnabled: parsed.data.videoSoundEnabled,
+            sectionsConfig: toNullableJsonInput(parsed.data.sectionsConfig),
             packageIds: {
                 connect: parsed.data.packageIds.map((id) => ({ id }))
             }
@@ -220,6 +224,8 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
             sections: toNullableJsonInput(data.sections),
             backstageMedia: toNullableJsonInput(data.backstageMedia),
             differentialsMedia: toNullableJsonInput(data.differentialsMedia),
+            videoSoundEnabled: data.videoSoundEnabled,
+            sectionsConfig: toNullableJsonInput(data.sectionsConfig),
             packageIds: packageIds
                 ? {
                     set: packageIds.map((pkgId) => ({ id: pkgId }))

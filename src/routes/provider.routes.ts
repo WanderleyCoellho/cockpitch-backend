@@ -32,7 +32,8 @@ const createProviderSchema = z.object({
     differentialsMedia: z.array(mediaItemSchema).nullable().optional(),
     aboutPortfolioMedia: z.array(mediaItemSchema).nullable().optional(),
     partners: z.array(z.any()).nullable().optional(),
-    packageLabel: z.string().optional()
+    packageLabel: z.string().optional(),
+    contactInfo: z.record(z.string(), z.any()).nullable().optional()
 })
 
 const updateProviderSchema = createProviderSchema.partial().refine(
@@ -131,7 +132,9 @@ providerRouter.post('/', async (req: AuthenticatedRequest, res) => {
             testimonials: toNullableJsonInput(parsed.data.testimonials),
             differentialsMedia: toNullableJsonInput(parsed.data.differentialsMedia),
             aboutPortfolioMedia: toNullableJsonInput(parsed.data.aboutPortfolioMedia),
-            partners: toNullableJsonInput(parsed.data.partners)
+            partners: toNullableJsonInput(parsed.data.partners),
+            packageLabel: parsed.data.packageLabel,
+            contactInfo: toNullableJsonInput(parsed.data.contactInfo)
         }
     })
 
@@ -194,7 +197,9 @@ providerRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
             testimonials: toNullableJsonInput(parsed.data.testimonials),
             differentialsMedia: toNullableJsonInput(parsed.data.differentialsMedia),
             aboutPortfolioMedia: toNullableJsonInput(parsed.data.aboutPortfolioMedia),
-            partners: toNullableJsonInput(parsed.data.partners)
+            partners: toNullableJsonInput(parsed.data.partners),
+            packageLabel: parsed.data.packageLabel,
+            contactInfo: toNullableJsonInput(parsed.data.contactInfo)
         }
     })
 
