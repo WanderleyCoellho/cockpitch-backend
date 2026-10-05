@@ -35,4 +35,4 @@ saem por e-mail.
 - Falha do mailer → `attempts` incrementa e `nextAttemptAt` avança.
 
 ## Variáveis
-`RESEND_API_KEY`, `MAIL_FROM` (ex.: `Cockpitch <propostas@seudominio.com>`), `APP_PUBLIC_URL`.
+`RESEND_API_KEY`, `MAIL_FROM` (ex.: `Lumen Deal <propostas@seudominio.com>`), `APP_PUBLIC_URL`.

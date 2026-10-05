@@ -1,10 +1,12 @@
 # Contexto Arquitetural do Projeto
 
-> Fonte de verdade da arquitetura do Cockpitch. Vale para os 3 repositórios
+> Fonte de verdade da arquitetura do Lumen Deal. Vale para os 3 repositórios
 > (`cockpitch-backend`, `cockpitch-frontend`, `cockpitch-admin`). As specs ficam
 > centralizadas aqui, no backend.
 
 ## Produto
+**Lumen Deal** (nome comercial; "Cockpitch" era o nome provisório e permanece só nos nomes dos repositórios),
+produto da Lumen Dev Studios (lumendevstudios.com), da mesma família do Lumen CFO.
 Plataforma SaaS de **propostas comerciais interativas** para qualquer empresa ou
 profissional autônomo. A proposta é uma página pública (link compartilhável) que o
 cliente final navega, interage, aceita online e baixa em PDF. A origem foi um
@@ -17,13 +19,15 @@ produto para fotografia/vídeo de casamento; a direção atual é **multissegmen
 - Admin (Ops interno): React 18 + Vite, com BFF Express que repassa `/api` ao backend (cookie httpOnly).
 - Banco: PostgreSQL (Prisma Migrate, migrações versionadas em `prisma/migrations`).
 - Pagamentos: Stripe Checkout (assinatura) + webhook; licença manual por comprovante (fluxo Ops).
-- Storage de arquivos: **adotado** disco local (`uploads/`), **proposto** Cloudflare R2/S3 → ver `architecture/002-object-storage.md`.
-- E-mail transacional: **proposto** Resend → ver `email-notifications.md`.
+- Storage de arquivos: **adotado** disco local (`uploads/`), **decidido** Railway Buckets (S3-compatível) → ver `architecture/002-object-storage.md`.
+- E-mail transacional: Resend, domínio de envio `mail.lumendevstudios.com` (região sa-east-1) → ver `email-notifications.md`.
 - Mensageria: nenhuma. Jobs agendados in-process via node-cron.
 
 ## Hospedagem
-- Backend: Railway (Dockerfile + `entrypoint.sh` roda `prisma migrate deploy`).
-- Frontend/Admin: a definir (Vercel é o candidato natural). Sem CDN/WAF dedicado na frente da API hoje.
+- Backend + Postgres + Bucket: Railway, projeto `lumen-deal` (Dockerfile + `entrypoint.sh` roda `prisma migrate deploy`).
+- Frontend/Admin: Vercel (time LumenDev Studios). DNS de lumendevstudios.com gerenciado na Vercel.
+- Domínios planejados: app `deal.lumendevstudios.com`, API `api.deal.lumendevstudios.com`, Ops `ops.deal.lumendevstudios.com`.
+- Sem CDN/WAF dedicado na frente da API hoje.
 
 ## Camadas e Convenções (backend)
 - **Adotado hoje:** `src/routes/*.routes.ts` concentram validação + regra + acesso a dados (camadas misturadas).
@@ -51,8 +55,8 @@ produto para fotografia/vídeo de casamento; a direção atual é **multissegmen
 ## Direção (decisões tomadas em 2026-10-05)
 1. **Multiempresa via Workspace + membros/papéis** → `architecture/001-workspaces.md`.
 2. **Proposta em blocos + modelos por segmento** → `architecture/003-proposal-blocks.md`.
-3. **Storage em R2/S3** → `architecture/002-object-storage.md`.
+3. **Storage em Railway Buckets (S3-compatível)** → `architecture/002-object-storage.md`.
 4. Features v1: aceite online, itens com preço calculado, notificações por e-mail, exportar PDF, experiência interativa + ajuda contextual + manual.
 
 ---
-_Última atualização: 2026-10-05 — criação inicial a partir da análise dos 3 repositórios._
+_Última atualização: 2026-10-05 — nome comercial Lumen Deal, Railway Buckets no lugar do R2, domínio de e-mail._

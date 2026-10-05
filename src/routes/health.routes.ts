@@ -5,7 +5,7 @@ export const healthRouter = Router()
 
 // Liveness: o processo está de pé.
 healthRouter.get('/health', (_req, res) => {
-    res.json({ ok: true, service: 'cockpitch-backend', timestamp: new Date().toISOString() })
+    res.json({ ok: true, service: 'lumen-deal-api', timestamp: new Date().toISOString() })
 })
 
 // Readiness: o banco responde (usar como healthcheck de deploy no Railway).

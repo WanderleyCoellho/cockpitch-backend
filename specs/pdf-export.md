@@ -20,7 +20,7 @@ inclui a página de **comprovante de aceite** (nome, e-mail, data/hora, IP, hash
 ## 3. Regras de Negócio e Contexto Estrito
 - O PDF reflete a seleção atual do cliente (pacote/opcionais) e o total calculado.
 - O cabeçalho/rodapé leva a marca do workspace, a validade e a paginação.
-- Plano FREE: rodapé "Feito com Cockpitch" (entitlement `removeBranding`).
+- Plano FREE: rodapé "Feito com Lumen Deal" (entitlement `removeBranding`).
 
 ## 4. Limites e Casos de Borda (Fallbacks)
 - Mídia que falha ao carregar não bloqueia a impressão (timeout de 5 s, depois imprime sem a mídia).

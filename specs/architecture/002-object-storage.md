@@ -1,50 +1,53 @@
-# Arquitetura: Storage de objetos (Cloudflare R2 / S3)
+# Arquitetura: Storage de objetos (Railway Buckets, S3-compatível)
 
 ## 1. Motivação e Problema Atual
 `upload.routes.ts` e `payment-receipt.routes.ts` gravam em `uploads/` no disco do container.
-No Railway esse disco é efêmero: tudo some a cada deploy. Além disso, `/uploads` é servido
-estático com `Access-Control-Allow-Origin: *`, o que deixa os **comprovantes de pagamento
-públicos** para quem souber ou adivinhar a URL.
+No Railway esse disco é efêmero: tudo some a cada deploy. Os comprovantes já foram tirados do
+diretório público na Fase 0, mas continuam sem persistência.
 
 ## 2. Decisão
-- Interface `StorageDriver` (`put`, `getSignedReadUrl`, `delete`, `publicUrl`) em `src/lib/storage/`.
-- Implementações: `S3StorageDriver` (R2 é compatível com S3) e `LocalStorageDriver` (dev/teste).
-  A escolha é feita por `STORAGE_DRIVER=s3|local`.
-- Dois "espaços":
-  - **public** (mídia de proposta/perfil): bucket público ou domínio de CDN do R2. A URL é estável.
-  - **private** (comprovantes e, futuramente, PDFs assinados): nunca expostos. A leitura é feita
-    por URL assinada de curta duração (5 min) gerada por endpoint autenticado.
-- O banco guarda a **chave do objeto** (`storageKey`), não a URL absoluta. A URL é derivada na
-  leitura, o que permite trocar de domínio/CDN sem migrar dados.
-- A validação de "URL confiável" (`trustedUploadUrl.ts`) passa a aceitar o domínio público configurado.
-- Cada upload grava `Upload { id, workspaceId, key, mime, size, visibility }` para controle de
-  cota por plano e limpeza de órfãos.
+- **Railway Buckets** (S3-compatível, roda sobre Tigris). Escolhido no lugar do Cloudflare R2
+  em 2026-10-05: mesmo preço de armazenamento (US$ 0,015/GB-mês), saída e operações grátis, e
+  nenhuma conta ou configuração externa para o dono do produto. Fica no mesmo projeto do Railway,
+  com credenciais injetadas por variável de referência.
+- Interface `StorageDriver` (`put`, `getSignedReadUrl`, `delete`) em `src/lib/storage/`, com as
+  implementações `S3StorageDriver` (Railway Buckets; também serve para R2/S3 se precisar migrar) e
+  `LocalStorageDriver` (dev/teste). A escolha é feita por `STORAGE_DRIVER=s3|local`.
+- **Buckets do Railway são sempre privados** (não há bucket público). Por isso:
+  - **Mídia pública** (fotos/vídeos de proposta e perfil): o banco guarda a **chave** do objeto e
+    a API expõe `GET /media/:key`, que responde **302 para uma URL pré-assinada** válida por 1 h
+    (`Cache-Control: private, max-age=3000`). O link salvo nas propostas nunca expira; só o redirect
+    é temporário. Como a saída do bucket é grátis, o vídeo não passa pelo servidor.
+  - **Privado** (comprovantes): só pela rota autenticada do Ops, com URL pré-assinada de 5 min.
+- Cada upload grava `Upload { id, workspaceId, key, mime, size, visibility }` para controle de cota
+  por plano (Grátis 0,5 GB · Essencial 5 GB · Profissional 20 GB · Equipe 100 GB) e limpeza de órfãos.
 
 ## 3. Escopo do Impacto
-`upload.routes.ts`, `payment-receipt.routes.ts`, `internal.routes.ts` (o Ops abre o comprovante
-via URL assinada), `app.ts` (o static `/uploads` fica restrito ao driver local e, mesmo nele,
-sem servir `receipts/`), frontend (sem mudança de contrato: continua recebendo `file_url`).
+`upload.routes.ts`, `payment-receipt.routes.ts`, `internal.routes.ts`, `app.ts` (nova rota
+`/media/:key`; o static `/uploads` permanece só para o driver local e URLs legadas),
+`trustedUploadUrl.ts` (aceita `/media/`). Frontend: sem mudança de contrato (`file_url`).
 
 ## 4. Plano de Migração
-1. Entregar o driver local com os comprovantes **fora** do diretório público (a Fase 0 já faz isso).
-2. Adicionar o driver S3 atrás da env; em produção, configurar o R2 e virar a chave.
-3. Script único copia os arquivos existentes (se houver volume) para o bucket e reescreve as URLs.
+1. Driver local com os comprovantes fora do diretório público (feito na Fase 0).
+2. Driver S3 + `/media/:key` atrás da env; em produção, `STORAGE_DRIVER=s3`.
+3. Se houver arquivos antigos em volume, um script único copia para o bucket e reescreve as URLs.
 
 ## 5. Nova Tecnologia/Dependências
-- `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`: SDK oficial que funciona com R2, S3 e MinIO.
-- Alternativas descartadas: volume do Railway (não escala horizontalmente, sem CDN);
-  Cloudinary (caro para vídeo, aprisiona no fornecedor).
+- `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`.
+- Alternativas descartadas: Cloudflare R2 (exige conta e configuração externa sem ganho de custo);
+  volume do Railway (não escala horizontalmente, US$ 0,15/GB).
 
 ## 6. Critérios de Aceite de Infraestrutura
-- Com `STORAGE_DRIVER=s3` e credenciais do R2, um upload de imagem retorna uma URL pública
-  acessível e um comprovante retorna 404 em acesso público e 200 via URL assinada.
+- Upload de imagem → `file_url` em `/media/...` → GET responde 302 → a URL assinada responde 200.
+- Comprovante: sem sessão Ops → 401; com sessão → 302 para URL assinada de curta duração.
 - Um redeploy no Railway não perde arquivos.
 
 ## 7. Riscos e Rollback
-- Custo de egress: o R2 não cobra. Upload grande (vídeo de 100 MB) passa pelo backend → v2:
-  upload direto ao bucket por URL pré-assinada.
+- Sem backup automático de bucket no Railway: job semanal de cópia para outro bucket (fase futura).
+- Upload grande (vídeo de 100 MB) passa pelo backend (custa saída de serviço US$ 0,05/GB) → v2: upload direto por URL pré-assinada.
 - Rollback: `STORAGE_DRIVER=local`.
 
-## Variáveis necessárias (fornecidas pelo dono do projeto)
-`S3_ENDPOINT`, `S3_REGION` (=`auto` no R2), `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
-`S3_BUCKET_PUBLIC`, `S3_BUCKET_PRIVATE`, `S3_PUBLIC_BASE_URL`.
+## Variáveis (injetadas pelo Railway por referência ao bucket)
+`STORAGE_DRIVER=s3`, `S3_ENDPOINT=${{bucket.ENDPOINT}}`, `S3_REGION=${{bucket.REGION}}`,
+`S3_BUCKET=${{bucket.BUCKET}}`, `S3_ACCESS_KEY_ID=${{bucket.ACCESS_KEY_ID}}`,
+`S3_SECRET_ACCESS_KEY=${{bucket.SECRET_ACCESS_KEY}}`.

@@ -1,6 +1,6 @@
-# Cockpitch Backend
+# Lumen Deal — Backend
 
-Backend oficial do Cockpitch.
+Backend oficial do **Lumen Deal**, plataforma de propostas comerciais interativas da Lumen Dev Studios.
 
 ## Stack
 
@@ -14,7 +14,7 @@ Backend oficial do Cockpitch.
 - `npm run dev` — API com reload
 - `npm run build` / `npm start`
 - `npm run typecheck`
-- `npm test` — precisa de um Postgres em `DATABASE_URL` (padrão: `postgresql://postgres:postgres@localhost:5432/cockpitch_test`); as migrações são aplicadas automaticamente
+- `npm test` — precisa de um Postgres em `DATABASE_URL` (padrão: `postgresql://postgres:postgres@localhost:5432/lumen_deal_test`); as migrações são aplicadas automaticamente
 - `npm run prisma:generate` / `npm run prisma:migrate`
 
 ## Setup rápido
@@ -27,7 +27,7 @@ Backend oficial do Cockpitch.
 Banco de teste local com Docker:
 
 ```bash
-docker run -d --name cockpitch-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cockpitch_test -p 5432:5432 postgres:16-alpine
+docker run -d --name lumen-deal-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=lumen_deal_test -p 5432:5432 postgres:16-alpine
 npm test
 ```
 

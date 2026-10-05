@@ -9,7 +9,7 @@ process.on('unhandledRejection', (reason) => {
 })
 
 const server = app.listen(env.PORT, () => {
-    console.log(`[api] cockpitch-backend running on port ${env.PORT}`)
+    console.log(`[api] lumen-deal-api running on port ${env.PORT}`)
     startBillingReconciliationJob()
 })
 

@@ -6,7 +6,7 @@ export default function setup() {
         stdio: 'inherit',
         env: {
             ...process.env,
-            DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/cockpitch_test'
+            DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/lumen_deal_test'
         }
     })
 }

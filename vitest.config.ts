@@ -8,7 +8,7 @@ export default defineConfig({
         globalSetup: ['tests/globalSetup.ts'],
         env: {
             NODE_ENV: 'test',
-            DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/cockpitch_test',
+            DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/lumen_deal_test',
             JWT_SECRET: 'test-secret-with-at-least-thirty-two-characters!!',
             STRIPE_SECRET_KEY: 'sk_test_dummy',
             STRIPE_WEBHOOK_SECRET: 'whsec_dummy',
