@@ -26,7 +26,12 @@ produto para fotografia/vídeo de casamento; a direção atual é **multissegmen
 ## Hospedagem
 - Backend + Postgres + Bucket: Railway, projeto `lumen-deal` (Dockerfile + `entrypoint.sh` roda `prisma migrate deploy`).
 - Frontend/Admin: Vercel (time LumenDev Studios). DNS de lumendevstudios.com gerenciado na Vercel.
-- Domínios planejados: app `deal.lumendevstudios.com`, API `api.deal.lumendevstudios.com`, Ops `ops.deal.lumendevstudios.com`.
+- Produção (2026-10-05):
+  - App + página pública: Vercel `lumen-deal` → `https://deal.lumendevstudios.com`
+  - Ops: Vercel `lumen-deal-ops` → `https://ops.deal.lumendevstudios.com` (o `vercel.json` repassa `/api/*` à API; o BFF Express fica só para uso local)
+  - API: Railway `lumen-deal` / serviço `api` (região us-east4) → `https://api-production-d3ff.up.railway.app` (planejado: `api.deal.lumendevstudios.com`)
+  - Postgres: Railway (mesmo projeto, us-east4). Bucket: Railway `files` (iad).
+  - Enquanto os PRs não forem integrados, os deploys usam a branch `claude/funny-clarke-xax3wt`.
 - Sem CDN/WAF dedicado na frente da API hoje.
 
 ## Camadas e Convenções (backend)
