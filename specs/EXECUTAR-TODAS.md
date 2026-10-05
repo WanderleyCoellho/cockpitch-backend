@@ -14,10 +14,10 @@
 ## Ordem de Execução
 1. **Fundação (Fase 0)**: estabilidade, segurança, deploy, testes e CI — `specs/process/001-fundacao-hardening.md` — Depende de: nenhuma — ✅ concluído em 2026-10-05 (backend + frontend + admin).
 2. **Storage (Railway Buckets)** — `specs/architecture/002-object-storage.md` — Depende de: 1 — ✅ concluído em 2026-10-05 (cota por plano fica para a etapa 3, que cria o Workspace).
-3. **Workspaces + equipe + entitlements no servidor** — `specs/architecture/001-workspaces.md` — Depende de: 1 — backend ✅ 2026-10-05; frontend (equipe, convites, limites) em andamento.
+3. **Workspaces + equipe + entitlements no servidor** — `specs/architecture/001-workspaces.md` — Depende de: 1 — ✅ concluído em 2026-10-05 (backend + frontend; Ops segue listando por pessoa).
 4. **Itens com preço calculado** — `specs/priced-line-items.md` — Depende de: 3.
 5. **Proposta em blocos + modelos por segmento** — `specs/architecture/003-proposal-blocks.md` — Depende de: 3, 4 (bloco `pricing`).
-6. **Ajuda contextual + onboarding + central de ajuda** — `specs/in-app-guidance.md` — Depende de: 1. Os componentes base podem ser feitos em paralelo com 3–5 e aplicados a cada tela refeita.
+6. **Ajuda contextual + onboarding + central de ajuda** — `specs/in-app-guidance.md` — Depende de: 1. Os componentes base podem ser feitos em paralelo com 3–5 e aplicados a cada tela refeita. — 🟡 base pronta (`HelpTip`, `FieldLabel`, catálogo `src/shared/help/content.ts`, teste de chaves) e aplicada em cadastro e equipe; faltam checklist, tour e /ajuda.
 7. **Aceite online** — `specs/proposal-online-acceptance.md` — Depende de: 5.
 8. **Notificações por e-mail** — `specs/email-notifications.md` — Depende de: 3, 7 — domínio `mail.lumendevstudios.com` em verificação no Resend; precisa de `RESEND_API_KEY` no Railway (funciona em modo console sem isso).
 9. **Exportar PDF (impressão)** — `specs/pdf-export.md` — Depende de: 5.
