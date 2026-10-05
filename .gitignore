@@ -36,4 +36,4 @@ dist-ssr
 
 .env
 # Arquivos privados (comprovantes)
-storage/
+/storage/
