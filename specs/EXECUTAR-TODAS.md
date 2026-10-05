@@ -12,7 +12,7 @@
 - Toda mudança vai para a branch `claude/funny-clarke-xax3wt` do(s) repositório(s) afetado(s).
 
 ## Ordem de Execução
-1. **Fundação (Fase 0)**: estabilidade, segurança, deploy, testes e CI — `specs/process/001-fundacao-hardening.md` — Depende de: nenhuma — ✅ backend concluído em 2026-10-05 (frontend em andamento).
+1. **Fundação (Fase 0)**: estabilidade, segurança, deploy, testes e CI — `specs/process/001-fundacao-hardening.md` — Depende de: nenhuma — ✅ concluído em 2026-10-05 (backend + frontend + admin).
 2. **Storage R2/S3** — `specs/architecture/002-object-storage.md` — Depende de: 1 — ⚠️ precisa das credenciais do R2 (pode ser implementado com o driver local e ativado depois).
 3. **Workspaces + equipe + entitlements no servidor** — `specs/architecture/001-workspaces.md` — Depende de: 1.
 4. **Itens com preço calculado** — `specs/priced-line-items.md` — Depende de: 3.
