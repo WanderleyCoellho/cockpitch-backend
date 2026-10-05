@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma.js'
 import path from 'path'
 import fs from 'fs'
 import { legacyReceiptUploadsDir, receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
+import { getStorage, isValidObjectKey, PRIVATE_PREFIX } from '../lib/storage/index.js'
 
 export const internalRouter = Router()
 
@@ -486,7 +487,28 @@ internalRouter.get('/licensing/receipts/:receiptId/file', async (req, res) => {
         return res.status(404).json({ message: 'Receipt not found' })
     }
 
-    // basename impede path traversal mesmo que storedFilename tenha sido adulterado no banco.
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+
+    // Comprovantes atuais ficam no espaço privado do storage (chave "private/...").
+    if (receipt.storedFilename.startsWith(PRIVATE_PREFIX) && isValidObjectKey(receipt.storedFilename)) {
+        const storage = getStorage()
+        if (storage.kind === 's3') {
+            // URL assinada curta: o arquivo sai direto do bucket, só para quem tem sessão Ops.
+            const url = await storage.getSignedReadUrl(receipt.storedFilename, 5 * 60)
+            if (!url) return res.status(404).json({ message: 'Receipt file not found' })
+            return res.redirect(302, url)
+        }
+        const localFile = storage.localPath(receipt.storedFilename)
+        if (!localFile || !(await storage.exists(receipt.storedFilename))) {
+            return res.status(404).json({ message: 'Receipt file not found' })
+        }
+        res.setHeader('Content-Type', receipt.mimeType)
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(receipt.originalFilename)}"`)
+        return res.sendFile(localFile)
+    }
+
+    // Legado (disco do container). basename impede path traversal mesmo com storedFilename adulterado.
     const filename = path.basename(receipt.storedFilename)
     const candidates = [path.join(receiptUploadsDir, filename), path.join(legacyReceiptUploadsDir, filename)]
     const filePath = candidates.find((candidate) => fs.existsSync(candidate))
@@ -495,12 +517,7 @@ internalRouter.get('/licensing/receipts/:receiptId/file', async (req, res) => {
     }
 
     res.setHeader('Content-Type', receipt.mimeType)
-    res.setHeader('Cache-Control', 'private, no-store')
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-    res.setHeader(
-        'Content-Disposition',
-        `inline; filename="${encodeURIComponent(receipt.originalFilename)}"`
-    )
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(receipt.originalFilename)}"`)
     return res.sendFile(filePath)
 })
 

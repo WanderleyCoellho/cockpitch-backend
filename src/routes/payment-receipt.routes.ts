@@ -1,11 +1,12 @@
-import { Router, type Response } from 'express'
+import { Router, type NextFunction, type Response } from 'express'
 import multer from 'multer'
-import path from 'path'
 import fs from 'fs'
 import { fileTypeFromFile } from 'file-type'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
-import { receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
+import { receiptFilePath } from '../lib/receiptStorage.js'
+import { buildObjectKey, getStorage } from '../lib/storage/index.js'
+import { removeTempFile, tempDiskStorage } from '../lib/tempUploads.js'
 
 const MAX_RECEIPT_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -24,18 +25,8 @@ const EXTENSION_BY_MIME: Record<string, string> = {
 }
 
 
-const storage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, receiptUploadsDir),
-    filename: (_req, file, cb) => {
-        const originalExt = path.extname(file.originalname)
-        const ext = EXTENSION_BY_MIME[file.mimetype] || originalExt || '.bin'
-        const base = path.basename(file.originalname, originalExt).replace(/[^a-zA-Z0-9-_]/g, '-')
-        cb(null, `receipt-${Date.now()}-${base}${ext}`)
-    }
-})
-
 const upload = multer({
-    storage,
+    storage: tempDiskStorage,
     limits: { fileSize: MAX_RECEIPT_SIZE_BYTES },
     fileFilter: (_req, file, cb) => {
         if (!ALLOWED_RECEIPT_MIME_TYPES.has(file.mimetype)) {
@@ -50,60 +41,85 @@ export const paymentReceiptRouter = Router()
 
 paymentReceiptRouter.use(requireAuth)
 
-paymentReceiptRouter.post('/', (req: AuthenticatedRequest, res: Response) => {
-    upload.single('receipt')(req, res, async (err: unknown) => {
-        if (err instanceof multer.MulterError) {
-            if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({ message: 'Receipt file too large. Max size is 10MB' })
-            }
-            return res.status(400).json({ message: 'Invalid receipt upload request' })
-        }
+paymentReceiptRouter.post('/', (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    // O callback do multer roda fora do fluxo de promessas do Express: erros vão explicitamente para next().
+    upload.single('receipt')(req, res, (err: unknown) => void handleReceiptUpload(req, res, err).catch(next))
+})
 
-        if (err instanceof Error) {
-            return res.status(400).json({ message: err.message })
+async function handleReceiptUpload(req: AuthenticatedRequest, res: Response, err: unknown) {
+    if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ message: 'Receipt file too large. Max size is 10MB' })
         }
+        return res.status(400).json({ message: 'Invalid receipt upload request' })
+    }
 
-        if (!req.auth) {
-            return res.status(401).json({ message: 'Unauthorized' })
-        }
+    if (err instanceof Error) {
+        return res.status(400).json({ message: err.message })
+    }
 
-        if (!req.file) {
-            return res.status(400).json({ message: 'Receipt file is required' })
-        }
+    if (!req.auth) {
+        return res.status(401).json({ message: 'Unauthorized' })
+    }
 
-        const detected = await fileTypeFromFile(req.file.path)
+    if (!req.file) {
+        return res.status(400).json({ message: 'Receipt file is required' })
+    }
+
+    const tempPath = req.file.path
+    let key: string
+    try {
+        const detected = await fileTypeFromFile(tempPath)
         if (!detected || !ALLOWED_RECEIPT_MIME_TYPES.has(detected.mime) || detected.mime !== req.file.mimetype) {
-            await fs.promises.unlink(req.file.path).catch(() => undefined)
             return res.status(400).json({ message: 'Receipt file signature does not match allowed type' })
         }
 
-        const created = await prisma.paymentReceipt.create({
-            data: {
-                userId: req.auth.userId,
-                fileUrl: '',
-                storedFilename: req.file.filename,
-                originalFilename: req.file.originalname,
-                mimeType: req.file.mimetype
-            },
-            select: { id: true }
+        // Comprovante é dado financeiro: vai para o espaço privado do storage.
+        key = buildObjectKey({
+            visibility: 'private',
+            folder: 'receipts',
+            originalName: req.file.originalname,
+            extension: EXTENSION_BY_MIME[detected.mime]
         })
-
-        const receipt = await prisma.paymentReceipt.update({
-            where: { id: created.id },
-            data: { fileUrl: receiptFilePath(created.id) },
-            select: {
-                id: true,
-                originalFilename: true,
-                mimeType: true,
-                status: true,
-                riskLevel: true,
-                createdAt: true
-            }
+        await getStorage().put({
+            key,
+            body: fs.createReadStream(tempPath),
+            contentType: detected.mime,
+            contentLength: req.file.size
         })
+    } catch (storageError) {
+        console.error('[receipt] storage put failed', storageError)
+        return res.status(502).json({ message: 'Não foi possível salvar o comprovante agora. Tente novamente.' })
+    } finally {
+        await removeTempFile(tempPath)
+    }
 
-        return res.status(201).json({ receipt })
+    const created = await prisma.paymentReceipt.create({
+        data: {
+            userId: req.auth.userId,
+            fileUrl: '',
+            storedFilename: key,
+            originalFilename: req.file.originalname,
+            mimeType: req.file.mimetype
+        },
+        select: { id: true }
     })
-})
+
+    const receipt = await prisma.paymentReceipt.update({
+        where: { id: created.id },
+        data: { fileUrl: receiptFilePath(created.id) },
+        select: {
+            id: true,
+            originalFilename: true,
+            mimeType: true,
+            status: true,
+            riskLevel: true,
+            createdAt: true
+        }
+    })
+
+    return res.status(201).json({ receipt })
+}
 
 paymentReceiptRouter.get('/me', async (req: AuthenticatedRequest, res: Response) => {
     if (!req.auth) {

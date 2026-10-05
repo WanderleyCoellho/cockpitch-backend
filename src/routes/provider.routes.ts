@@ -103,11 +103,10 @@ providerRouter.post('/', async (req: AuthenticatedRequest, res) => {
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`
-    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, origin)) {
+    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, req)) {
         return res.status(400).json({ message: 'logoUrl must be a trusted uploaded file URL' })
     }
-    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, origin)) {
+    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, req)) {
         return res.status(400).json({ message: 'photoUrl must be a trusted uploaded file URL' })
     }
 
@@ -157,11 +156,10 @@ providerRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`
-    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, origin)) {
+    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, req)) {
         return res.status(400).json({ message: 'logoUrl must be a trusted uploaded file URL' })
     }
-    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, origin)) {
+    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, req)) {
         return res.status(400).json({ message: 'photoUrl must be a trusted uploaded file URL' })
     }
 

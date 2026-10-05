@@ -34,7 +34,28 @@ const EnvSchema = z.object({
         .transform((value) => value === 'true'),
     BILLING_RECONCILIATION_CRON: z.string().default('0 */6 * * *'),
     BILLING_RECONCILIATION_API_KEY: z.string().default(''),
-    BILLING_RECONCILIATION_MIN_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(60)
+    BILLING_RECONCILIATION_MIN_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(60),
+    // URL pública da API, usada para montar links de arquivos (ex.: https://api.deal.lumendevstudios.com).
+    PUBLIC_API_URL: z.string().url().optional().or(z.literal('').transform(() => undefined)),
+    // Armazenamento de arquivos: "local" (dev/teste) ou "s3" (Railway Buckets em produção).
+    STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+    LOCAL_STORAGE_DIR: z.string().default('storage/objects'),
+    S3_ENDPOINT: z.string().default(''),
+    S3_REGION: z.string().default('auto'),
+    S3_BUCKET: z.string().default(''),
+    S3_ACCESS_KEY_ID: z.string().default(''),
+    S3_SECRET_ACCESS_KEY: z.string().default(''),
+    S3_FORCE_PATH_STYLE: z
+        .enum(['true', 'false'])
+        .default('false')
+        .transform((value) => value === 'true')
+}).superRefine((value, ctx) => {
+    if (value.STORAGE_DRIVER !== 's3') return
+    for (const key of ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
+        if (!value[key]) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} é obrigatório quando STORAGE_DRIVER=s3` })
+        }
+    }
 })
 
 export const env = EnvSchema.parse(process.env)

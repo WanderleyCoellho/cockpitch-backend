@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import path from 'path'
 import { stripeWebhookRouter } from './routes/stripe-webhook.routes.js'
 import { apiRouter } from './routes/index.js'
+import { mediaRouter } from './routes/media.routes.js'
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js'
 import { env } from './config/env.js'
 
@@ -41,6 +42,9 @@ app.use(
 
 // O webhook precisa do body bruto para validar a assinatura: registrado antes do express.json().
 app.use('/webhooks/stripe', stripeWebhookRouter)
+
+// Mídia pública (fotos/vídeos de propostas e perfis), servida a partir do storage.
+app.use('/media', mediaRouter)
 
 // Comprovantes antigos ficavam em uploads/receipts: nunca devem ser servidos publicamente.
 app.use('/uploads/receipts', (_req, res) => {

@@ -20,12 +20,20 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lumen_deal_test
+      S3_TEST_ENDPOINT: http://localhost:5055
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Servidor S3 de teste (moto)
+        run: |
+          pip install "moto[server]"
+          moto_server -p 5055 > moto.log 2>&1 &
       - run: npm ci
       - run: npx prisma generate
       - run: npm run typecheck

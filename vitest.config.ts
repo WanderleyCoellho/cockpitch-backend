@@ -16,7 +16,9 @@ export default defineConfig({
             STRIPE_PRICE_PRO: 'price_pro_test',
             OPS_ADMIN_EMAIL: 'ops@test.local',
             OPS_ADMIN_PASSWORD: 'ops-password-test',
-            TRUST_PROXY: '0'
+            TRUST_PROXY: '0',
+            STORAGE_DRIVER: 'local',
+            LOCAL_STORAGE_DIR: 'storage/test-objects'
         }
     }
 })

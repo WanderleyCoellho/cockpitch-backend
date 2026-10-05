@@ -151,11 +151,10 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`
-    if (parsed.data.heroVideoUrl && !isTrustedUploadUrl(parsed.data.heroVideoUrl, origin)) {
+    if (parsed.data.heroVideoUrl && !isTrustedUploadUrl(parsed.data.heroVideoUrl, req)) {
         return res.status(400).json({ message: 'heroVideoUrl must be a trusted uploaded file URL' })
     }
-    if (parsed.data.weddingPhotoUrl && !isTrustedUploadUrl(parsed.data.weddingPhotoUrl, origin)) {
+    if (parsed.data.weddingPhotoUrl && !isTrustedUploadUrl(parsed.data.weddingPhotoUrl, req)) {
         return res.status(400).json({ message: 'weddingPhotoUrl must be a trusted uploaded file URL' })
     }
 
@@ -215,11 +214,10 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`
-    if (parsed.data.heroVideoUrl && !isTrustedUploadUrl(parsed.data.heroVideoUrl, origin)) {
+    if (parsed.data.heroVideoUrl && !isTrustedUploadUrl(parsed.data.heroVideoUrl, req)) {
         return res.status(400).json({ message: 'heroVideoUrl must be a trusted uploaded file URL' })
     }
-    if (parsed.data.weddingPhotoUrl && !isTrustedUploadUrl(parsed.data.weddingPhotoUrl, origin)) {
+    if (parsed.data.weddingPhotoUrl && !isTrustedUploadUrl(parsed.data.weddingPhotoUrl, req)) {
         return res.status(400).json({ message: 'weddingPhotoUrl must be a trusted uploaded file URL' })
     }
 

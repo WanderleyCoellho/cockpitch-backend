@@ -16,6 +16,14 @@ Backend oficial do **Lumen Deal**, plataforma de propostas comerciais interativa
 - `npm run typecheck`
 - `npm test` — precisa de um Postgres em `DATABASE_URL` (padrão: `postgresql://postgres:postgres@localhost:5432/lumen_deal_test`); as migrações são aplicadas automaticamente
 - `npm run prisma:generate` / `npm run prisma:migrate`
+- Teste de integração do S3 (opcional): `pip install "moto[server]" && moto_server -p 5055 &` e depois `S3_TEST_ENDPOINT=http://localhost:5055 npm test`
+
+## Arquivos (storage)
+
+- Produção: Railway Buckets (S3-compatível, privado). Mídia pública é servida por `GET /media/<chave>`,
+  que redireciona para uma URL assinada de 1 h; o link salvo nas propostas nunca expira.
+- Comprovantes ficam em `private/` e só abrem pela rota autenticada do Ops (URL assinada de 5 min).
+- Dev/teste: `STORAGE_DRIVER=local` grava em `storage/objects`.
 
 ## Setup rápido
 
@@ -46,7 +54,8 @@ Roadmap e decisões de arquitetura em [`specs/`](specs/) — comece por
 ## Endpoints principais
 
 - GET /api/health
-- GET /api/health/ready
+- GET /api/health/ready (banco + storage)
+- GET /media/<chave> (mídia pública)
 - POST /api/auth/register
 - POST /api/auth/login
 - GET /api/auth/me

@@ -21,6 +21,7 @@ diretório público na Fase 0, mas continuam sem persistência.
   - **Privado** (comprovantes): só pela rota autenticada do Ops, com URL pré-assinada de 5 min.
 - Cada upload grava `Upload { id, workspaceId, key, mime, size, visibility }` para controle de cota
   por plano (Grátis 0,5 GB · Essencial 5 GB · Profissional 20 GB · Equipe 100 GB) e limpeza de órfãos.
+  **Adiado para a etapa de Workspaces** (a cota é por workspace, que ainda não existe).
 
 ## 3. Escopo do Impacto
 `upload.routes.ts`, `payment-receipt.routes.ts`, `internal.routes.ts`, `app.ts` (nova rota
@@ -51,3 +52,6 @@ diretório público na Fase 0, mas continuam sem persistência.
 `STORAGE_DRIVER=s3`, `S3_ENDPOINT=${{bucket.ENDPOINT}}`, `S3_REGION=${{bucket.REGION}}`,
 `S3_BUCKET=${{bucket.BUCKET}}`, `S3_ACCESS_KEY_ID=${{bucket.ACCESS_KEY_ID}}`,
 `S3_SECRET_ACCESS_KEY=${{bucket.SECRET_ACCESS_KEY}}`.
+
+---
+_Changelog: 2026-10-05 — implementado (drivers local/S3, `/media/*`, comprovantes em `private/`, healthcheck do storage). Tabela `Upload`/cota adiada para Workspaces._

@@ -19,7 +19,7 @@ produto para fotografia/vídeo de casamento; a direção atual é **multissegmen
 - Admin (Ops interno): React 18 + Vite, com BFF Express que repassa `/api` ao backend (cookie httpOnly).
 - Banco: PostgreSQL (Prisma Migrate, migrações versionadas em `prisma/migrations`).
 - Pagamentos: Stripe Checkout (assinatura) + webhook; licença manual por comprovante (fluxo Ops).
-- Storage de arquivos: **adotado** disco local (`uploads/`), **decidido** Railway Buckets (S3-compatível) → ver `architecture/002-object-storage.md`.
+- Storage de arquivos: **adotado** Railway Buckets via `src/lib/storage` (`STORAGE_DRIVER=s3`; `local` em dev/teste); mídia pública em `/media/<chave>` → ver `architecture/002-object-storage.md`.
 - E-mail transacional: Resend, domínio de envio `mail.lumendevstudios.com` (região sa-east-1) → ver `email-notifications.md`.
 - Mensageria: nenhuma. Jobs agendados in-process via node-cron.
 
