@@ -1,45 +1,53 @@
 import type { NextFunction, Request, Response } from 'express'
+import { Prisma } from '@prisma/client'
+import { HttpError } from '../lib/httpError.js'
 
-export interface ApiError extends Error {
-    statusCode?: number
-    details?: any
+type ErrorResponse = { statusCode: number; message: string; code?: string }
+
+function resolveError(err: unknown): ErrorResponse {
+    if (err instanceof HttpError) {
+        return { statusCode: err.statusCode, message: err.message, code: err.code }
+    }
+
+    // Erros conhecidos do Prisma viram respostas HTTP previsíveis em vez de 500.
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2002') {
+            const target = Array.isArray(err.meta?.target) ? (err.meta?.target as string[]).join(', ') : 'campo único'
+            return { statusCode: 409, message: `Já existe um registro com este valor (${target}).`, code: 'CONFLICT' }
+        }
+        if (err.code === 'P2025') {
+            return { statusCode: 404, message: 'Registro não encontrado.', code: 'NOT_FOUND' }
+        }
+        if (err.code === 'P2003') {
+            return { statusCode: 400, message: 'Referência inválida.', code: 'INVALID_REFERENCE' }
+        }
+    }
+
+    // JSON malformado no body (body-parser) ou payload grande demais.
+    if (err && typeof err === 'object' && 'type' in err) {
+        const type = (err as { type?: string }).type
+        if (type === 'entity.parse.failed') return { statusCode: 400, message: 'Invalid JSON' }
+        if (type === 'entity.too.large') return { statusCode: 413, message: 'Payload too large' }
+    }
+
+    return { statusCode: 500, message: 'Internal server error' }
 }
 
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
-    const isDevelopment = process.env.NODE_ENV === 'development'
+    const { statusCode, message, code } = resolveError(err)
 
-    let message = 'Internal server error'
-    let statusCode = 500
-    let details: any = undefined
-
-    if (err instanceof Error) {
-        message = err.message
-        if ('statusCode' in err && typeof (err as any).statusCode === 'number') {
-            statusCode = (err as any).statusCode
-        }
-        if (isDevelopment && 'details' in err) {
-            details = (err as any).details
-        }
+    if (statusCode >= 500) {
+        console.error('[api:error]', {
+            method: req.method,
+            path: req.path,
+            error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err
+        })
     }
 
-    // Handle JSON parsing errors
-    if (err instanceof SyntaxError && 'body' in err) {
-        statusCode = 400
-        message = 'Invalid JSON'
-    }
+    if (res.headersSent) return
 
-    console.error('[api:error]', {
-        statusCode,
-        message,
-        path: req.path,
-        method: req.method,
-        stack: isDevelopment ? (err instanceof Error ? err.stack : undefined) : undefined
-    })
-
-    res.status(statusCode).json({
-        message,
-        ...(isDevelopment && details && { details })
-    })
+    // Nunca expõe detalhes internos em erros 5xx.
+    res.status(statusCode).json(code ? { message, code } : { message })
 }
 
 export function notFoundHandler(req: Request, res: Response) {

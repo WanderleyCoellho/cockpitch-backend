@@ -7,9 +7,16 @@ const EnvSchema = z.object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().default(3001),
     DATABASE_URL: z.string().min(1),
-    JWT_SECRET: z.string().min(1),
+    JWT_SECRET: z.string().min(32, 'JWT_SECRET deve ter pelo menos 32 caracteres aleatórios'),
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
+    STRIPE_PRICE_STARTER: z.string().default(''),
+    STRIPE_PRICE_PRO: z.string().default(''),
+    STRIPE_PRICE_AGENCY: z.string().default(''),
+    // Número de proxies reversos na frente da API (Railway = 1). Necessário para req.ip/req.protocol corretos.
+    TRUST_PROXY: z.coerce.number().int().min(0).default(1),
+    // Origens extras liberadas no CORS, separadas por vírgula (ex.: domínios de preview).
+    CORS_EXTRA_ORIGINS: z.string().default(''),
     FRONTEND_URL: z.string().url().default('http://localhost:5173'),
     OPS_FRONTEND_URL: z.string().url().default('http://localhost:5174'),
     OPS_ADMIN_EMAIL: z.string().default(''),

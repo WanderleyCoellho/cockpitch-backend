@@ -71,6 +71,16 @@ async function verifyProposalOwnership(auth: any, proposalId: string) {
     return proposal
 }
 
+// Garante que todos os pacotes informados pertencem ao mesmo provider da proposta.
+async function packagesBelongToProvider(packageIds: string[], providerId: string) {
+    const unique = [...new Set(packageIds)]
+    if (unique.length === 0) return true
+    const count = await prisma.package.count({
+        where: { id: { in: unique }, providerId }
+    })
+    return count === unique.length
+}
+
 proposalRouter.get('/provider/:providerId', async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
     const { providerId } = req.params
@@ -154,6 +164,10 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
         return res.status(403).json({ message: 'Access denied' })
     }
 
+    if (!(await packagesBelongToProvider(parsed.data.packageIds, provider.id))) {
+        return res.status(403).json({ message: 'One or more packages do not belong to this provider' })
+    }
+
     const proposal = await prisma.proposal.create({
         data: {
             providerId: parsed.data.providerId,
@@ -215,6 +229,10 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     }
 
     const { packageIds, providerId: _providerId, ...data } = parsed.data
+
+    if (packageIds && !(await packagesBelongToProvider(packageIds, proposal.providerId))) {
+        return res.status(403).json({ message: 'One or more packages do not belong to this provider' })
+    }
 
     const updated = await prisma.proposal.update({
         where: { id },

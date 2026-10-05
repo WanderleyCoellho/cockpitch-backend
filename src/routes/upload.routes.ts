@@ -4,6 +4,7 @@ import path from 'path'
 import fs from 'fs'
 import { fileTypeFromFile } from 'file-type'
 import { requireAuth } from '../middlewares/authMiddleware.js'
+import { uploadRateLimit } from '../middlewares/rateLimit.js'
 
 const MAX_FILE_SIZE_MB = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB ?? '100')
 const MAX_FILE_SIZE_BYTES = Math.max(5, MAX_FILE_SIZE_MB) * 1024 * 1024
@@ -72,7 +73,7 @@ const upload = multer({
 
 export const uploadRouter = Router()
 
-uploadRouter.post('/upload', requireAuth, (req: Request, res: Response) => {
+uploadRouter.post('/upload', requireAuth, uploadRateLimit, (req: Request, res: Response) => {
     upload.single('file')(req, res, async (err: unknown) => {
         if (err instanceof multer.MulterError) {
             if (err.code === 'LIMIT_FILE_SIZE') {

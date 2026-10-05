@@ -1,32 +1,30 @@
-# Use a Node.js base image
-FROM node:20-slim
+# syntax=docker/dockerfile:1
 
-# Instala o OpenSSL, dependência obrigatória para o motor do Prisma
-RUN apt-get update -y && apt-get install -y openssl
-
-# Set the working directory
+# ---------- build: instala TODAS as dependências (tsc é devDependency) ----------
+FROM node:20-slim AS build
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-# Copy package.json and package-lock.json
 COPY package*.json ./
-
-# Install dependencies
-RUN npm install --omit=dev
-
-# Copy the rest of the application code
-COPY . .
-
-# Build the application
+RUN npm ci
+COPY prisma ./prisma
+RUN npx prisma generate
+COPY tsconfig.json ./
+COPY src ./src
 RUN npm run build
 
-# Generate the Prisma client
-RUN npx prisma generate
+# ---------- runtime: só dependências de produção (inclui o Prisma CLI para rodar as migrações) ----------
+FROM node:20-slim AS runtime
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/dist ./dist
+COPY prisma ./prisma
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh && mkdir -p uploads storage/receipts && chown -R node:node /app
+USER node
 
-# Dá permissão de execução para o nosso script de inicialização
-RUN chmod +x ./entrypoint.sh
-
-# Expose the port
-EXPOSE 3333
-
-# Define o script como o comando principal de inicialização
+EXPOSE 3001
 CMD ["./entrypoint.sh"]

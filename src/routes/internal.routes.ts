@@ -5,6 +5,9 @@ import { runBillingReconciliationOnce } from '../jobs/billingReconciliation.job.
 import { verifyOpsAccessToken } from '../lib/opsJwt.js'
 import { getCookieValue } from '../lib/httpCookies.js'
 import { prisma } from '../lib/prisma.js'
+import path from 'path'
+import fs from 'fs'
+import { legacyReceiptUploadsDir, receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
 
 export const internalRouter = Router()
 
@@ -464,8 +467,41 @@ internalRouter.get('/licensing/receipts', async (req, res) => {
 
     return res.json({
         count: receipts.length,
-        receipts
+        // A URL pública antiga deixa de valer: o arquivo só é lido pela rota autenticada abaixo.
+        receipts: receipts.map((receipt) => ({ ...receipt, fileUrl: receiptFilePath(receipt.id) }))
     })
+})
+
+internalRouter.get('/licensing/receipts/:receiptId/file', async (req, res) => {
+    const auth = ensureInternalAccess(req, res)
+    if (!auth.ok) {
+        return auth.response
+    }
+
+    const receipt = await prisma.paymentReceipt.findUnique({
+        where: { id: req.params.receiptId },
+        select: { storedFilename: true, mimeType: true, originalFilename: true }
+    })
+    if (!receipt) {
+        return res.status(404).json({ message: 'Receipt not found' })
+    }
+
+    // basename impede path traversal mesmo que storedFilename tenha sido adulterado no banco.
+    const filename = path.basename(receipt.storedFilename)
+    const candidates = [path.join(receiptUploadsDir, filename), path.join(legacyReceiptUploadsDir, filename)]
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate))
+    if (!filePath) {
+        return res.status(404).json({ message: 'Receipt file not found' })
+    }
+
+    res.setHeader('Content-Type', receipt.mimeType)
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(receipt.originalFilename)}"`
+    )
+    return res.sendFile(filePath)
 })
 
 internalRouter.patch('/licensing/receipts/:receiptId/analyze', async (req, res) => {

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
+import { sanitizeRichText } from '../lib/sanitizeHtml.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 
 const mediaItemSchema = z.object({
@@ -21,7 +22,8 @@ const createProviderSchema = z.object({
     shortDescription: z.string().optional(),
     aboutTitle: z.string().optional(),
     aboutSubtitle: z.string().optional(),
-    aboutText: z.string().optional(),
+    // Único campo renderizado como HTML na página pública: sanitizado na escrita.
+    aboutText: z.string().max(20000).transform(sanitizeRichText).optional(),
     styleText: z.string().optional(),
     heroVideoUrl: z.string().url().optional().or(z.literal('')),
     deliveryTimes: z.string().optional(),

@@ -35,6 +35,14 @@ function hasChanges(
     )
 }
 
+function resolveNextBilling(currentTier: AppPlanTier, subscription: Stripe.Subscription) {
+    const billingStatus = mapBillingStatus(subscription.status)
+    const hasAccess = billingStatus === 'ACTIVE' || billingStatus === 'PAST_DUE'
+    // Preço não mapeado (env STRIPE_PRICE_* ausente/desatualizada) preserva o plano atual: nunca rebaixa por engano.
+    const planTier: AppPlanTier = hasAccess ? resolvePlanFromSubscription(subscription) ?? currentTier : 'FREE'
+    return { stripeSubscriptionId: subscription.id, billingStatus, planTier }
+}
+
 export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
     const users = await prisma.user.findMany({
         where: { stripeCustomerId: { not: null } },
@@ -78,11 +86,7 @@ export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
             const subscription = pickBestSubscription(listed.data)
 
             const next = subscription
-                ? {
-                    stripeSubscriptionId: subscription.id,
-                    billingStatus: mapBillingStatus(subscription.status),
-                    planTier: resolvePlanFromSubscription(subscription)
-                }
+                ? resolveNextBilling(user.planTier, subscription)
                 : {
                     stripeSubscriptionId: null,
                     billingStatus: 'INACTIVE' as AppBillingStatus,

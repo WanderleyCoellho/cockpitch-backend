@@ -4,21 +4,22 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { signAccessToken } from '../lib/jwt.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
+import { authRateLimit } from '../middlewares/rateLimit.js'
 
 const registerSchema = z.object({
-    name: z.string().min(2),
+    name: z.string().trim().min(2).max(120),
     email: z.string().email(),
-    password: z.string().min(6)
+    password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres').max(128)
 })
 
 const loginSchema = z.object({
     email: z.string().email(),
-    password: z.string().min(6)
+    password: z.string().min(1).max(128)
 })
 
 export const authRouter = Router()
 
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', authRateLimit, async (req, res) => {
     const parsed = registerSchema.safeParse(req.body)
 
     if (!parsed.success) {
@@ -33,7 +34,7 @@ authRouter.post('/register', async (req, res) => {
         return res.status(409).json({ message: 'Email already in use' })
     }
 
-    const passwordHash = await bcrypt.hash(password, 10)
+    const passwordHash = await bcrypt.hash(password, 12)
 
     const user = await prisma.user.create({
         data: {
@@ -69,7 +70,7 @@ authRouter.post('/register', async (req, res) => {
     })
 })
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', authRateLimit, async (req, res) => {
     const parsed = loginSchema.safeParse(req.body)
 
     if (!parsed.success) {

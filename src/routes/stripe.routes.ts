@@ -4,11 +4,16 @@ import { z } from 'zod'
 import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
-import { mapPlanTier } from '../lib/billing.js'
+import { mapPlanTier, priceIdForTier } from '../lib/billing.js'
 
-const bodySchema = z.object({
-    priceId: z.string().min(1)
-})
+// Preferência: o cliente informa o plano e o servidor resolve o preço (STRIPE_PRICE_*).
+// `priceId` continua aceito por compatibilidade, mas só se estiver mapeado.
+const bodySchema = z
+    .object({
+        planTier: z.enum(['STARTER', 'PRO']).optional(),
+        priceId: z.string().min(1).optional()
+    })
+    .refine((body) => body.planTier || body.priceId, { message: 'planTier or priceId is required' })
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 
@@ -26,12 +31,13 @@ stripeRouter.post('/stripe/create-checkout', requireAuth, async (req: Authentica
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const targetPlanTier = mapPlanTier(parsed.data.priceId)
+    const targetPlanTier = parsed.data.planTier ?? mapPlanTier(parsed.data.priceId)
     if (targetPlanTier === 'AGENCY') {
         return res.status(403).json({ message: 'Este plano não está disponível no autosserviço.' })
     }
-    if (targetPlanTier === 'FREE') {
-        return res.status(400).json({ message: 'Preço inválido para checkout.' })
+    const priceId = targetPlanTier ? priceIdForTier(targetPlanTier) : null
+    if (!targetPlanTier || !priceId) {
+        return res.status(400).json({ message: 'Plano indisponível para checkout.', code: 'PRICE_NOT_CONFIGURED' })
     }
 
     const user = await prisma.user.findUnique({ where: { id: auth.userId } })
@@ -58,11 +64,13 @@ stripeRouter.post('/stripe/create-checkout', requireAuth, async (req: Authentica
     const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: customerId,
-        line_items: [{ price: parsed.data.priceId, quantity: 1 }],
-        metadata: { userId: user.id },
+        line_items: [{ price: priceId, quantity: 1 }],
+        metadata: { userId: user.id, planTier: targetPlanTier },
+        allow_promotion_codes: true,
         success_url: `${env.FRONTEND_URL}/analytics?checkout=success`,
         cancel_url: `${env.FRONTEND_URL}/analytics?checkout=cancel`
     })
 
-    return res.json({ sessionId: session.id })
+    // `url` substitui o redirectToCheckout (descontinuado no Stripe.js).
+    return res.json({ sessionId: session.id, url: session.url })
 })

@@ -9,15 +9,23 @@ proposalPublicRouter.get('/proposals/:slug', async (req, res) => {
     const proposal = await prisma.proposal.findUnique({
         where: { slug },
         include: {
-            provider: true,
-            packageIds: {
-                include: { items: true }
+            // Perfil público: sem userId nem timestamps internos.
+            provider: {
+                omit: { userId: true, createdAt: true, updatedAt: true }
             },
-            views: true
+            packageIds: {
+                include: { items: { orderBy: { order: 'asc' } } },
+                orderBy: { order: 'asc' }
+            }
         }
     })
 
     if (!proposal) {
+        return res.status(404).json({ message: 'Proposal not found' })
+    }
+
+    // Propostas arquivadas não ficam acessíveis pelo link público.
+    if (proposal.status === 'ARQUIVADA') {
         return res.status(404).json({ message: 'Proposal not found' })
     }
 

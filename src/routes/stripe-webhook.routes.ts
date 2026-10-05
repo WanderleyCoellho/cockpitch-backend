@@ -17,7 +17,8 @@ async function updateBillingByCustomerId(
     }
 ) {
     await prisma.user.updateMany({
-        where: { stripeCustomerId: customerId },
+        // Contas em cortesia (concedida pelo Ops) não são alteradas pelo Stripe, igual à reconciliação.
+        where: { stripeCustomerId: customerId, licensePolicy: { not: 'COURTESY' } },
         data
     })
 }
@@ -57,7 +58,7 @@ stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res
                     stripeSubscriptionId:
                         typeof session.subscription === 'string' ? session.subscription : null,
                     billingStatus: 'ACTIVE',
-                    planTier: mapPlanTier(firstPriceId)
+                    planTier: mapPlanTier(firstPriceId) ?? undefined
                 })
             }
             break
@@ -71,7 +72,7 @@ stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res
                 await updateBillingByCustomerId(customerId, {
                     stripeSubscriptionId: subscription.id,
                     billingStatus: 'ACTIVE',
-                    planTier: mapPlanTier(firstPriceId)
+                    planTier: mapPlanTier(firstPriceId) ?? undefined
                 })
             }
             break
@@ -83,11 +84,12 @@ stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res
 
             if (customerId) {
                 const billingStatus = mapBillingStatus(subscription.status)
+                const hasAccess = billingStatus === 'ACTIVE' || billingStatus === 'PAST_DUE'
 
                 await updateBillingByCustomerId(customerId, {
                     stripeSubscriptionId: subscription.id,
                     billingStatus,
-                    planTier: mapPlanTier(firstPriceId)
+                    planTier: hasAccess ? mapPlanTier(firstPriceId) ?? undefined : 'FREE'
                 })
             }
             break

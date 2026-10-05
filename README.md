@@ -4,30 +4,49 @@ Backend oficial do Cockpitch.
 
 ## Stack
 
-- Node.js + Express + TypeScript
+- Node.js 20 + Express 5 + TypeScript
 - Prisma + PostgreSQL
-- Stripe
+- Stripe (assinaturas) + licenciamento manual por comprovante
+- Vitest + Supertest (testes de integração com Postgres real)
 
 ## Scripts
 
-- npm run dev
-- npm run build
-- npm run typecheck
-- npm run prisma:generate
-- npm run prisma:migrate
+- `npm run dev` — API com reload
+- `npm run build` / `npm start`
+- `npm run typecheck`
+- `npm test` — precisa de um Postgres em `DATABASE_URL` (padrão: `postgresql://postgres:postgres@localhost:5432/cockpitch_test`); as migrações são aplicadas automaticamente
+- `npm run prisma:generate` / `npm run prisma:migrate`
 
-## Setup rapido
+## Setup rápido
 
-1. Copie .env.example para .env
-2. Ajuste DATABASE_URL, JWT_SECRET, STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET
-3. Para reconciliação de licença, configure BILLING_RECONCILIATION_ENABLED, BILLING_RECONCILIATION_CRON, BILLING_RECONCILIATION_API_KEY e BILLING_RECONCILIATION_MIN_INTERVAL_SECONDS
-4. npm install
-5. npm run prisma:migrate
-6. npm run dev
+1. `cp .env.example .env` e preencha (todas as variáveis estão documentadas lá)
+2. `npm install`
+3. `npm run prisma:migrate`
+4. `npm run dev`
+
+Banco de teste local com Docker:
+
+```bash
+docker run -d --name cockpitch-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cockpitch_test -p 5432:5432 postgres:16-alpine
+npm test
+```
+
+## Deploy (Railway)
+
+- O `Dockerfile` é multi-stage: compila com todas as dependências e roda só com as de produção.
+- `entrypoint.sh` aplica `prisma migrate deploy` e inicia a API.
+- Use `GET /api/health/ready` como healthcheck (verifica o banco).
+- Configure `TRUST_PROXY=1`, `NODE_ENV=production` e os `STRIPE_PRICE_*`.
+
+## Especificações
+
+Roadmap e decisões de arquitetura em [`specs/`](specs/) — comece por
+[`specs/_context.md`](specs/_context.md) e [`specs/EXECUTAR-TODAS.md`](specs/EXECUTAR-TODAS.md).
 
 ## Endpoints principais
 
 - GET /api/health
+- GET /api/health/ready
 - POST /api/auth/register
 - POST /api/auth/login
 - GET /api/auth/me
@@ -50,17 +69,20 @@ Backend oficial do Cockpitch.
 - GET /api/internal/licensing/users
 - PATCH /api/internal/licensing/users/:userId
 - GET /api/internal/licensing/receipts
+- GET /api/internal/licensing/receipts/:receiptId/file
 - PATCH /api/internal/licensing/receipts/:receiptId/analyze
 - PATCH /api/internal/licensing/receipts/:receiptId/review
 - POST /api/internal/licensing/receipts/:receiptId/approve-and-activate
 - POST /api/internal/licensing/heartbeat
 - GET /api/internal/licensing/heartbeat
 
-Payload checkout:
+Payload checkout (o servidor resolve o preço via `STRIPE_PRICE_*`):
 
-{
-  "priceId": "price_xxx"
-}
+```json
+{ "planTier": "PRO" }
+```
+
+Resposta: `{ "sessionId": "cs_...", "url": "https://checkout.stripe.com/..." }`. Redirecione para `url`.
 
 Endpoint interno de reconciliação manual:
 

@@ -5,6 +5,7 @@ import fs from 'fs'
 import { fileTypeFromFile } from 'file-type'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
+import { receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
 
 const MAX_RECEIPT_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -22,10 +23,6 @@ const EXTENSION_BY_MIME: Record<string, string> = {
     'image/webp': '.webp'
 }
 
-const receiptUploadsDir = path.resolve(process.cwd(), 'uploads', 'receipts')
-if (!fs.existsSync(receiptUploadsDir)) {
-    fs.mkdirSync(receiptUploadsDir, { recursive: true })
-}
 
 const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, receiptUploadsDir),
@@ -80,20 +77,22 @@ paymentReceiptRouter.post('/', (req: AuthenticatedRequest, res: Response) => {
             return res.status(400).json({ message: 'Receipt file signature does not match allowed type' })
         }
 
-        const origin = `${req.protocol}://${req.get('host')}`
-        const fileUrl = `${origin}/uploads/receipts/${req.file.filename}`
-
-        const receipt = await prisma.paymentReceipt.create({
+        const created = await prisma.paymentReceipt.create({
             data: {
                 userId: req.auth.userId,
-                fileUrl,
+                fileUrl: '',
                 storedFilename: req.file.filename,
                 originalFilename: req.file.originalname,
                 mimeType: req.file.mimetype
             },
+            select: { id: true }
+        })
+
+        const receipt = await prisma.paymentReceipt.update({
+            where: { id: created.id },
+            data: { fileUrl: receiptFilePath(created.id) },
             select: {
                 id: true,
-                fileUrl: true,
                 originalFilename: true,
                 mimeType: true,
                 status: true,
@@ -115,7 +114,6 @@ paymentReceiptRouter.get('/me', async (req: AuthenticatedRequest, res: Response)
         where: { userId: req.auth.userId },
         select: {
             id: true,
-            fileUrl: true,
             originalFilename: true,
             mimeType: true,
             status: true,

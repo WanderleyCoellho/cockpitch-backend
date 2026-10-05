@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { verifyAccessToken, type JwtPayload } from '../lib/jwt.js'
 
-export type AuthenticatedRequest = Request & {
+export type AuthenticatedRequest = Request<Record<string, string>> & {
     auth?: JwtPayload
 }
 
