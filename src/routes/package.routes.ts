@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
+import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 
 const createPackageSchema = z.object({
     providerId: z.string().cuid(),
@@ -22,14 +23,14 @@ const updatePackageSchema = createPackageSchema.partial().refine(
 
 export const packageRouter = Router()
 
-packageRouter.use(requireAuth)
+packageRouter.use(requireAuth, requireWorkspace)
 
 // Helper para validar propriedade do provider
 async function verifyProviderOwnership(auth: any, providerId: string) {
     const provider = await prisma.provider.findFirst({
         where: {
             id: providerId,
-            userId: auth.userId
+            workspaceId: workspaceIdOf(auth)
         }
     })
     return provider
@@ -69,7 +70,7 @@ packageRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
         where: {
             id,
             provider: {
-                userId: auth.userId
+                workspaceId: workspaceIdOf(auth)
             }
         },
         include: { items: true }
@@ -82,7 +83,7 @@ packageRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
     return res.json({ package: pkg })
 })
 
-packageRouter.post('/', async (req: AuthenticatedRequest, res) => {
+packageRouter.post('/', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
 
     if (!auth) {
@@ -108,7 +109,7 @@ packageRouter.post('/', async (req: AuthenticatedRequest, res) => {
     return res.status(201).json({ package: pkg })
 })
 
-packageRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
+packageRouter.patch('/:id', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
     const { id } = req.params
 
@@ -126,7 +127,7 @@ packageRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
         where: {
             id,
             provider: {
-                userId: auth.userId
+                workspaceId: workspaceIdOf(auth)
             }
         }
     })
@@ -144,7 +145,7 @@ packageRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     return res.json({ package: updated })
 })
 
-packageRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
+packageRouter.delete('/:id', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
     const { id } = req.params
 
@@ -156,7 +157,7 @@ packageRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
         where: {
             id,
             provider: {
-                userId: auth.userId
+                workspaceId: workspaceIdOf(auth)
             }
         }
     })

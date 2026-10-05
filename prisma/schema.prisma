@@ -8,53 +8,110 @@ datasource db {
 }
 
 model User {
-  id                   String           @id @default(cuid())
-  email                String           @unique
+  id                   String            @id @default(cuid())
+  email                String            @unique
   passwordHash         String
   name                 String
-  role                 UserRole         @default(PROVIDER)
-  planTier             PlanTier         @default(FREE)
-  billingStatus        BillingStatus    @default(INACTIVE)
-  licensePolicy        LicensePolicy    @default(STANDARD)
+  role                 UserRole          @default(PROVIDER)
+  planTier             PlanTier          @default(FREE)
+  billingStatus        BillingStatus     @default(INACTIVE)
+  licensePolicy        LicensePolicy     @default(STANDARD)
   licensePolicyNote    String?
   stripeCustomerId     String?
   stripeSubscriptionId String?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
   providers            Provider[]
   paymentReceipts      PaymentReceipt[]
+  memberships          WorkspaceMember[]
+  invitesSent          WorkspaceInvite[] @relation("InviteSender")
+}
+
+/// Unidade de conta, cobrança e limites (empresa ou profissional autônomo).
+/// Os campos de cobrança em User ficam congelados (legado) e serão removidos depois.
+model Workspace {
+  id                   String            @id @default(cuid())
+  name                 String
+  slug                 String            @unique
+  segment              WorkspaceSegment  @default(GENERAL)
+  logoUrl              String?
+  brandColor           String?
+  locale               String            @default("pt-BR")
+  currency             String            @default("BRL")
+  planTier             PlanTier          @default(FREE)
+  billingStatus        BillingStatus     @default(INACTIVE)
+  licensePolicy        LicensePolicy     @default(STANDARD)
+  licensePolicyNote    String?
+  stripeCustomerId     String?           @unique
+  stripeSubscriptionId String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  members              WorkspaceMember[]
+  invites              WorkspaceInvite[]
+  providers            Provider[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model WorkspaceInvite {
+  id          String        @id @default(cuid())
+  workspaceId String
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  role        WorkspaceRole @default(MEMBER)
+  tokenHash   String        @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String?
+  invitedBy   User?         @relation("InviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+
+  @@index([workspaceId])
 }
 
 model PaymentReceipt {
-  id                    String            @id @default(cuid())
-  userId                String
-  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fileUrl               String
-  storedFilename        String
-  originalFilename      String
-  mimeType              String
-  status                ReceiptStatus     @default(SUBMITTED)
-  riskLevel             ReceiptRiskLevel  @default(MEDIUM)
-  analysisSummary       String?
-  extractedText         String?
-  detectedAmount        String?
-  detectedTransferDate  String?
-  payerName             String?
-  recipientName         String?
-  reviewerName          String?
-  reviewerNotes         String?
-  reviewedAt            DateTime?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  id                   String           @id @default(cuid())
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileUrl              String
+  storedFilename       String
+  originalFilename     String
+  mimeType             String
+  status               ReceiptStatus    @default(SUBMITTED)
+  riskLevel            ReceiptRiskLevel @default(MEDIUM)
+  analysisSummary      String?
+  extractedText        String?
+  detectedAmount       String?
+  detectedTransferDate String?
+  payerName            String?
+  recipientName        String?
+  reviewerName         String?
+  reviewerNotes        String?
+  reviewedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   @@index([userId])
   @@index([status])
 }
 
 model Provider {
-  id                  String      @id @default(cuid())
+  id                  String     @id @default(cuid())
   userId              String
-  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId         String?
+  workspace           Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name                String
   email               String
   whatsapp            String?
@@ -76,14 +133,15 @@ model Provider {
   differentialsMedia  Json?
   aboutPortfolioMedia Json?
   partners            Json?
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
   packages            Package[]
   proposals           Proposal[]
   packageLabel        String?
   contactInfo         Json?
 
   @@index([userId])
+  @@index([workspaceId])
 }
 
 model Package {
@@ -121,28 +179,28 @@ model PackageItem {
 }
 
 model Proposal {
-  id                  String            @id @default(cuid())
-  providerId          String
-  provider            Provider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  clientName          String
-  slug                String            @unique
-  serviceDate         String?
-  validityDays        Int               @default(30)
-  status              ProposalStatus    @default(ABERTA)
-  commercialStatus    CommercialStatus  @default(SEM_RESPOSTA)
-  heroVideoUrl        String?
-  weddingPhotoUrl     String?
-  theme               String?           @default("dark_luxury")
-  themeCustom         Json?
-  sections            Json?
-  backstageMedia      Json?
-  differentialsMedia  Json?
-  videoSoundEnabled   Boolean           @default(false)
-  sectionsConfig      Json?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  packageIds          Package[]         @relation("ProposalPackages")
-  views               ProposalView[]
+  id                 String           @id @default(cuid())
+  providerId         String
+  provider           Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  clientName         String
+  slug               String           @unique
+  serviceDate        String?
+  validityDays       Int              @default(30)
+  status             ProposalStatus   @default(ABERTA)
+  commercialStatus   CommercialStatus @default(SEM_RESPOSTA)
+  heroVideoUrl       String?
+  weddingPhotoUrl    String?
+  theme              String?          @default("dark_luxury")
+  themeCustom        Json?
+  sections           Json?
+  backstageMedia     Json?
+  differentialsMedia Json?
+  videoSoundEnabled  Boolean          @default(false)
+  sectionsConfig     Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  packageIds         Package[]        @relation("ProposalPackages")
+  views              ProposalView[]
 
   @@index([providerId])
   @@index([slug])
@@ -164,6 +222,24 @@ enum UserRole {
   PROVIDER
   CUSTOMER
   ADMIN
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum WorkspaceSegment {
+  PHOTO_VIDEO
+  EVENTS
+  AGENCY
+  CONSULTING
+  HEALTH_BEAUTY
+  CONSTRUCTION
+  EDUCATION
+  TECH
+  GENERAL
 }
 
 enum ProposalStatus {

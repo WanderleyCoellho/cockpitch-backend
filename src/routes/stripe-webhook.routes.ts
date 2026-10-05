@@ -1,7 +1,7 @@
 import { Router, raw } from 'express'
 import Stripe from 'stripe'
 import { env } from '../config/env.js'
-import { prisma } from '../lib/prisma.js'
+import { applyStripeBilling } from '../services/license.service.js'
 import { mapBillingStatus, mapPlanTier } from '../lib/billing.js'
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY)
@@ -16,11 +16,8 @@ async function updateBillingByCustomerId(
         planTier?: 'FREE' | 'STARTER' | 'PRO' | 'AGENCY'
     }
 ) {
-    await prisma.user.updateMany({
-        // Contas em cortesia (concedida pelo Ops) não são alteradas pelo Stripe, igual à reconciliação.
-        where: { stripeCustomerId: customerId, licensePolicy: { not: 'COURTESY' } },
-        data
-    })
+    // O plano pertence ao workspace dono do cliente Stripe (contas em cortesia são ignoradas).
+    await applyStripeBilling(customerId, data)
 }
 
 stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res) => {

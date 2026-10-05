@@ -2,6 +2,7 @@ import cron from 'node-cron'
 import Stripe from 'stripe'
 import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
+import { applyStripeBilling } from '../services/license.service.js'
 import { mapBillingStatus, resolvePlanFromSubscription, type AppBillingStatus, type AppPlanTier } from '../lib/billing.js'
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY)
@@ -44,7 +45,8 @@ function resolveNextBilling(currentTier: AppPlanTier, subscription: Stripe.Subsc
 }
 
 export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
-    const users = await prisma.user.findMany({
+    // O plano pertence ao workspace (cliente Stripe = workspace).
+    const users = await prisma.workspace.findMany({
         where: { stripeCustomerId: { not: null } },
         select: {
             id: true,
@@ -98,15 +100,12 @@ export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
                 continue
             }
 
-            await prisma.user.update({
-                where: { id: user.id },
-                data: next
-            })
+            await applyStripeBilling(customerId, next)
 
             result.updated += 1
         } catch (error) {
             result.failed += 1
-            console.error('[billing-reconciliation] failed for user', user.id, error)
+            console.error('[billing-reconciliation] failed for workspace', user.id, error)
         }
     }
 

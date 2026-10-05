@@ -1,8 +1,13 @@
 import type { NextFunction, Request, Response } from 'express'
+import type { WorkspaceRole } from '@prisma/client'
 import { verifyAccessToken, type JwtPayload } from '../lib/jwt.js'
 
 export type AuthenticatedRequest = Request<Record<string, string>> & {
-    auth?: JwtPayload
+    auth?: JwtPayload & {
+        /** Preenchidos por requireWorkspace. */
+        workspaceId?: string
+        workspaceRole?: WorkspaceRole
+    }
 }
 
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {

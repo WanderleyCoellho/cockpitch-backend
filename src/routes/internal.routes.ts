@@ -5,6 +5,7 @@ import { runBillingReconciliationOnce } from '../jobs/billingReconciliation.job.
 import { verifyOpsAccessToken } from '../lib/opsJwt.js'
 import { getCookieValue } from '../lib/httpCookies.js'
 import { prisma } from '../lib/prisma.js'
+import { syncOwnedWorkspaceLicense } from '../services/license.service.js'
 import path from 'path'
 import fs from 'fs'
 import { legacyReceiptUploadsDir, receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
@@ -358,14 +359,17 @@ internalRouter.patch('/licensing/users/:userId', async (req, res) => {
         return res.status(404).json({ message: 'User not found' })
     }
 
+    const licenseData = {
+        planTier: parsed.data.planTier,
+        billingStatus: parsed.data.billingStatus,
+        licensePolicy: parsed.data.licensePolicy,
+        licensePolicyNote: parsed.data.licensePolicyNote
+    }
+    // Fonte da verdade: o workspace que a pessoa possui. User guarda o espelho exibido no Ops.
+    await syncOwnedWorkspaceLicense(prisma, user.id, licenseData)
     const updated = await prisma.user.update({
         where: { id: user.id },
-        data: {
-            planTier: parsed.data.planTier,
-            billingStatus: parsed.data.billingStatus,
-            licensePolicy: parsed.data.licensePolicy,
-            licensePolicyNote: parsed.data.licensePolicyNote
-        },
+        data: licenseData,
         select: {
             id: true,
             email: true,
@@ -673,6 +677,13 @@ internalRouter.post('/licensing/receipts/:receiptId/approve-and-activate', async
                 reviewedAt: true,
                 updatedAt: true
             }
+        })
+
+        await syncOwnedWorkspaceLicense(tx, receipt.userId, {
+            planTier: parsed.data.planTier,
+            billingStatus: parsed.data.billingStatus,
+            licensePolicy: parsed.data.licensePolicy,
+            licensePolicyNote: parsed.data.licensePolicyNote
         })
 
         const updatedUser = await tx.user.update({

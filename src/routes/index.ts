@@ -12,11 +12,15 @@ import { uploadRouter } from './upload.routes.js'
 import { internalRouter } from './internal.routes.js'
 import { paymentReceiptRouter } from './payment-receipt.routes.js'
 import { opsAuthRouter } from './ops-auth.routes.js'
+import { workspaceRouter } from './workspace.routes.js'
+import { inviteRouter } from './invite.routes.js'
 
 export const apiRouter = Router()
 
 apiRouter.use('/auth', authRouter)
 apiRouter.use('/ops-auth', opsAuthRouter)
+apiRouter.use('/workspaces', workspaceRouter)
+apiRouter.use('/invites', inviteRouter)
 apiRouter.use('/providers', providerRouter)
 apiRouter.use('/packages', packageRouter)
 apiRouter.use('/package-items', packageItemRouter)

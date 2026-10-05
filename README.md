@@ -51,6 +51,15 @@ npm test
 Roadmap e decisões de arquitetura em [`specs/`](specs/) — comece por
 [`specs/_context.md`](specs/_context.md) e [`specs/EXECUTAR-TODAS.md`](specs/EXECUTAR-TODAS.md).
 
+## Workspaces, papéis e planos
+
+- Cada conta é um **Workspace** (empresa ou autônomo) com membros: `OWNER` (assina o plano),
+  `ADMIN` (perfil, pacotes, equipe) e `MEMBER` (cria e edita propostas).
+- O plano, a cobrança Stripe e a cortesia pertencem ao workspace. Os limites (propostas por mês,
+  pessoas, armazenamento) são verificados no servidor (`src/services/entitlements.ts`); estourar um
+  limite responde `402 { code: "PLAN_LIMIT" }`.
+- Os campos de plano em `User` são só um espelho do workspace que a pessoa possui (usado pelo painel Ops).
+
 ## Endpoints principais
 
 - GET /api/health
@@ -59,6 +68,11 @@ Roadmap e decisões de arquitetura em [`specs/`](specs/) — comece por
 - POST /api/auth/register
 - POST /api/auth/login
 - GET /api/auth/me
+- GET /api/workspaces (workspaces do usuário, com papel e limites do plano)
+- GET/PATCH /api/workspaces/current (workspace ativo: header `X-Workspace-Id`, ou o mais antigo)
+- GET /api/workspaces/current/members · PATCH/DELETE /api/workspaces/current/members/:memberId
+- POST /api/workspaces/current/invites · DELETE /api/workspaces/current/invites/:inviteId
+- GET /api/invites/:token · POST /api/invites/:token/accept
 - POST /api/ops-auth/login
 - GET /api/ops-auth/me
 - POST /api/ops-auth/logout

@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
+import { requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
+import { assertCanCreateProposal } from '../services/workspace.service.js'
 
 const mediaItemSchema = z.object({
     url: z.string().url(),
@@ -45,14 +47,14 @@ function toNullableJsonInput(value: unknown) {
     return value as Prisma.InputJsonValue
 }
 
-proposalRouter.use(requireAuth)
+proposalRouter.use(requireAuth, requireWorkspace)
 
 // Helper para validar propriedade do provider
 async function verifyProviderOwnership(auth: any, providerId: string) {
     const provider = await prisma.provider.findFirst({
         where: {
             id: providerId,
-            userId: auth.userId
+            workspaceId: workspaceIdOf(auth)
         }
     })
     return provider
@@ -64,7 +66,7 @@ async function verifyProposalOwnership(auth: any, proposalId: string) {
         where: {
             id: proposalId,
             provider: {
-                userId: auth.userId
+                workspaceId: workspaceIdOf(auth)
             }
         }
     })
@@ -120,7 +122,7 @@ proposalRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
         where: {
             id,
             provider: {
-                userId: auth.userId
+                workspaceId: workspaceIdOf(auth)
             }
         },
         include: {
@@ -166,6 +168,9 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
     if (!(await packagesBelongToProvider(parsed.data.packageIds, provider.id))) {
         return res.status(403).json({ message: 'One or more packages do not belong to this provider' })
     }
+
+    // Limite mensal do plano (402 PLAN_LIMIT → o painel oferece upgrade).
+    await assertCanCreateProposal(workspaceIdOf(auth))
 
     const proposal = await prisma.proposal.create({
         data: {

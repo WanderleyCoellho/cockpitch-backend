@@ -68,3 +68,9 @@ exibido para ser copiado.
   único `scopedProviderWhere(ctx)` e testes de isolamento por recurso.
 - Rollback: como a migração é aditiva, voltar o código para a versão anterior continua
   funcionando, porque as colunas antigas são preservadas até o passo 4.
+
+---
+_Changelog: 2026-10-05 — backend implementado (migração aditiva com backfill, `requireWorkspace`/`requireRole`,
+entitlements no servidor, convites com token de uso único (hash SHA-256, 7 dias), Stripe por workspace,
+Ops por pessoa → workspace que ela possui). Decisão: os campos de licença em `User` continuam como espelho
+do workspace possuído (não congelados) até o painel Ops listar por workspace; `Provider.userId` segue como "criador"._
