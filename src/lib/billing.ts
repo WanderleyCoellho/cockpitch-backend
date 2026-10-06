@@ -1,11 +1,15 @@
 import type Stripe from 'stripe'
 import { env } from '../config/env.js'
+import { tierForLookupKey } from './stripe.js'
 
 export type AppPlanTier = 'FREE' | 'STARTER' | 'PRO' | 'AGENCY'
 export type AppBillingStatus = 'INACTIVE' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED'
 export type PaidPlanTier = Exclude<AppPlanTier, 'FREE'>
 
-/** Mapa explícito priceId do Stripe → plano, configurado por ambiente (STRIPE_PRICE_*). */
+/**
+ * Mapa legado priceId → plano (STRIPE_PRICE_*). Opcional: os preços criados pela API são reconhecidos
+ * pela `lookup_key` (ver PLAN_CATALOG); estas variáveis só servem para preços criados à mão.
+ */
 export function getPriceIdByTier(): Record<PaidPlanTier, string> {
     return {
         STARTER: env.STRIPE_PRICE_STARTER,
@@ -36,7 +40,12 @@ export function mapBillingStatus(stripeStatus: Stripe.Subscription.Status): AppB
     return 'INACTIVE'
 }
 
+/** Plano de um preço do Stripe: primeiro pela lookup_key do catálogo, depois pelo mapa legado de IDs. */
+export function tierForPrice(price?: Pick<Stripe.Price, 'id' | 'lookup_key'> | null): PaidPlanTier | null {
+    if (!price) return null
+    return tierForLookupKey(price.lookup_key) ?? mapPlanTier(price.id)
+}
+
 export function resolvePlanFromSubscription(subscription: Stripe.Subscription): PaidPlanTier | null {
-    const firstPriceId = subscription.items.data[0]?.price?.id ?? null
-    return mapPlanTier(firstPriceId)
+    return tierForPrice(subscription.items.data[0]?.price ?? null)
 }

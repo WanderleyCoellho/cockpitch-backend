@@ -1,11 +1,7 @@
 import cron from 'node-cron'
-import Stripe from 'stripe'
 import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
-import { applyStripeBilling } from '../services/license.service.js'
-import { mapBillingStatus, resolvePlanFromSubscription, type AppBillingStatus, type AppPlanTier } from '../lib/billing.js'
-
-const stripe = new Stripe(env.STRIPE_SECRET_KEY)
+import { syncStripeCustomer } from '../services/stripe-billing.service.js'
 
 type ReconcileResult = {
     total: number
@@ -13,35 +9,6 @@ type ReconcileResult = {
     unchanged: number
     failed: number
     skippedCourtesy: number
-}
-
-function pickBestSubscription(subscriptions: Stripe.Subscription[]): Stripe.Subscription | null {
-    if (!subscriptions.length) return null
-
-    const activeLike = subscriptions.find((sub) =>
-        ['active', 'trialing', 'past_due', 'unpaid'].includes(sub.status)
-    )
-
-    return activeLike ?? subscriptions[0]
-}
-
-function hasChanges(
-    user: { planTier: AppPlanTier; billingStatus: AppBillingStatus; stripeSubscriptionId: string | null },
-    next: { planTier: AppPlanTier; billingStatus: AppBillingStatus; stripeSubscriptionId: string | null }
-): boolean {
-    return (
-        user.planTier !== next.planTier ||
-        user.billingStatus !== next.billingStatus ||
-        user.stripeSubscriptionId !== next.stripeSubscriptionId
-    )
-}
-
-function resolveNextBilling(currentTier: AppPlanTier, subscription: Stripe.Subscription) {
-    const billingStatus = mapBillingStatus(subscription.status)
-    const hasAccess = billingStatus === 'ACTIVE' || billingStatus === 'PAST_DUE'
-    // Preço não mapeado (env STRIPE_PRICE_* ausente/desatualizada) preserva o plano atual: nunca rebaixa por engano.
-    const planTier: AppPlanTier = hasAccess ? resolvePlanFromSubscription(subscription) ?? currentTier : 'FREE'
-    return { stripeSubscriptionId: subscription.id, billingStatus, planTier }
 }
 
 export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
@@ -74,33 +41,11 @@ export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
             }
 
             const customerId = user.stripeCustomerId
-            if (!customerId) {
+            const synced = customerId ? await syncStripeCustomer(customerId) : null
+            if (!synced?.changed) {
                 result.unchanged += 1
                 continue
             }
-
-            const listed = await stripe.subscriptions.list({
-                customer: customerId,
-                status: 'all',
-                limit: 10
-            })
-
-            const subscription = pickBestSubscription(listed.data)
-
-            const next = subscription
-                ? resolveNextBilling(user.planTier, subscription)
-                : {
-                    stripeSubscriptionId: null,
-                    billingStatus: 'INACTIVE' as AppBillingStatus,
-                    planTier: 'FREE' as AppPlanTier
-                }
-
-            if (!hasChanges(user, next)) {
-                result.unchanged += 1
-                continue
-            }
-
-            await applyStripeBilling(customerId, next)
 
             result.updated += 1
         } catch (error) {
