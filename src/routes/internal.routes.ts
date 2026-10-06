@@ -333,6 +333,8 @@ internalRouter.get('/licensing/users', async (req, res) => {
             stripeSubscriptionId: true,
             createdAt: true,
             updatedAt: true,
+            passwordHash: true,
+            googleSub: true,
             memberships: {
                 select: {
                     role: true,
@@ -351,8 +353,10 @@ internalRouter.get('/licensing/users', async (req, res) => {
     // `ownsWorkspace` indica se a licença editável (a da empresa própria) existe.
     return res.json({
         count: users.length,
-        users: users.map(({ memberships, ...user }) => ({
+        users: users.map(({ memberships, passwordHash, googleSub, ...user }) => ({
             ...user,
+            // Como a pessoa entra (sem expor hash nem identificador do Google).
+            loginMethods: [passwordHash ? 'PASSWORD' : null, googleSub ? 'GOOGLE' : null].filter(Boolean),
             ownsWorkspace: memberships.some((m) => m.role === 'OWNER'),
             workspaces: memberships.map((m) => {
                 const entitlements = resolveEntitlements(m.workspace)

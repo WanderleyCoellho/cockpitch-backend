@@ -238,6 +238,9 @@ describe('Ops: membros de equipe', () => {
         expect(list.status).toBe(200)
         const row = list.body.users.find((u: { id: string }) => u.id === member.user.id)
         expect(row.ownsWorkspace).toBe(false)
+        expect(row.loginMethods).toEqual(['PASSWORD'])
+        expect(row.passwordHash).toBeUndefined()
+        expect(row.googleSub).toBeUndefined()
         expect(row.workspaces).toEqual([
             expect.objectContaining({ name: 'Dona Ltda', role: 'MEMBER', licensePolicy: 'COURTESY', effectiveTier: 'AGENCY', members: 10 })
         ])

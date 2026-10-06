@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { signAccessToken } from '../lib/jwt.js'
 import { HttpError } from '../lib/httpError.js'
+import { env } from '../config/env.js'
+import { verifyGoogleIdToken } from '../lib/googleIdToken.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { authRateLimit } from '../middlewares/rateLimit.js'
 import { acceptInvite, createWorkspaceWithOwner, findValidInvite, listUserWorkspaces } from '../services/workspace.service.js'
@@ -26,6 +28,14 @@ const registerSchema = z.object({
 const loginSchema = z.object({
     email: z.string().email(),
     password: z.string().min(1).max(128)
+})
+
+const googleSchema = z.object({
+    credential: z.string().min(20).max(5000),
+    /** Presentes no cadastro: sem eles e sem convite, uma conta nova não é criada (o app pede os dados). */
+    workspaceName: z.string().trim().min(2).max(120).optional(),
+    segment: segmentSchema.optional(),
+    inviteToken: z.string().min(20).max(200).optional()
 })
 
 export const authRouter = Router()
@@ -134,4 +144,85 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     return res.json({ user })
+})
+
+// Configuração pública do "Entrar com Google" (o Client ID não é segredo).
+authRouter.get('/google/config', (_req, res) => {
+    return res.json({ enabled: !!env.GOOGLE_CLIENT_ID, clientId: env.GOOGLE_CLIENT_ID || null })
+})
+
+/**
+ * Entrar ou cadastrar com Google.
+ * - Conta já vinculada (googleSub) ou com o mesmo e-mail verificado: entra (e vincula).
+ * - Conta nova: precisa do nome da empresa/segmento ou de um convite; senão responde 404 com os dados
+ *   do Google para o app completar o cadastro.
+ */
+authRouter.post('/google', authRateLimit, async (req, res) => {
+    const parsed = googleSchema.safeParse(req.body)
+    if (!parsed.success) {
+        return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
+    }
+    const { credential, workspaceName, segment, inviteToken } = parsed.data
+    const google = await verifyGoogleIdToken(credential)
+    if (!google.emailVerified) {
+        throw new HttpError(403, 'Seu e-mail do Google ainda não foi verificado.', 'GOOGLE_EMAIL_UNVERIFIED')
+    }
+
+    const invite = inviteToken ? await findValidInvite(inviteToken) : null
+    if (invite && invite.email !== google.email) {
+        throw new HttpError(403, `Este convite foi enviado para ${invite.email}. Entre com essa conta Google.`, 'INVITE_EMAIL_MISMATCH')
+    }
+
+    let user =
+        (await prisma.user.findUnique({ where: { googleSub: google.sub } })) ??
+        (await prisma.user.findUnique({ where: { email: google.email } }))
+
+    if (user) {
+        // Mesmo e-mail confirmado pelo Google: vincula a conta existente (a pessoa passa a ter os dois jeitos de entrar).
+        if (user.googleSub && user.googleSub !== google.sub) {
+            throw new HttpError(409, 'Este e-mail já está ligado a outra conta Google.', 'GOOGLE_ACCOUNT_CONFLICT')
+        }
+        if (!user.googleSub) user = await prisma.user.update({ where: { id: user.id }, data: { googleSub: google.sub } })
+        if (invite) {
+            const already = await prisma.workspaceMember.findUnique({
+                where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId: user.id } },
+                select: { id: true }
+            })
+            if (!already) {
+                const target = { id: user.id, email: user.email }
+                await prisma.$transaction((tx) => acceptInvite(tx, inviteToken!, target))
+            }
+        }
+        const token = signAccessToken({ userId: user.id, role: user.role })
+        return res.json({ token, user: await buildSessionUser(user.id), created: false })
+    }
+
+    if (!invite && !workspaceName) {
+        return res.status(404).json({
+            message: 'Não há conta com este Gmail. Conte o nome da sua empresa para criar a conta.',
+            code: 'GOOGLE_ACCOUNT_NOT_FOUND',
+            google: { email: google.email, name: google.name }
+        })
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+            data: { name: google.name, email: google.email, googleSub: google.sub, passwordHash: null, role: 'PROVIDER' }
+        })
+        if (invite) {
+            await acceptInvite(tx, inviteToken!, { id: createdUser.id, email: createdUser.email })
+        } else {
+            await createWorkspaceWithOwner(tx, {
+                userId: createdUser.id,
+                ownerName: google.name,
+                ownerEmail: google.email,
+                workspaceName: workspaceName!,
+                segment: segment ?? 'GENERAL'
+            })
+        }
+        return createdUser
+    })
+
+    const token = signAccessToken({ userId: created.id, role: created.role })
+    return res.status(201).json({ token, user: await buildSessionUser(created.id), created: true })
 })
