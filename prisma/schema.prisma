@@ -10,7 +10,10 @@ datasource db {
 model User {
   id                   String            @id @default(cuid())
   email                String            @unique
-  passwordHash         String
+  /// Nulo para quem só entra com Google.
+  passwordHash         String?
+  /// Identificador da conta Google (claim "sub"), quando vinculada.
+  googleSub            String?           @unique
   name                 String
   role                 UserRole          @default(PROVIDER)
   planTier             PlanTier          @default(FREE)
@@ -70,13 +73,16 @@ model ProposalTemplate {
 }
 
 model WorkspaceMember {
-  id          String        @id @default(cuid())
-  workspaceId String
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role        WorkspaceRole @default(MEMBER)
-  createdAt   DateTime      @default(now())
+  id               String        @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role             WorkspaceRole @default(MEMBER)
+  /// Preferências de e-mail desta pessoa nesta empresa.
+  notifyOnOpen     Boolean       @default(true)
+  notifyOnResponse Boolean       @default(true)
+  createdAt        DateTime      @default(now())
 
   @@unique([workspaceId, userId])
   @@index([userId])
@@ -213,32 +219,32 @@ model PackageItem {
 }
 
 model Proposal {
-  id                 String           @id @default(cuid())
+  id                 String             @id @default(cuid())
   providerId         String
-  provider           Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  provider           Provider           @relation(fields: [providerId], references: [id], onDelete: Cascade)
   clientName         String
-  slug               String           @unique
+  slug               String             @unique
   serviceDate        String?
-  validityDays       Int              @default(30)
-  status             ProposalStatus   @default(ABERTA)
-  commercialStatus   CommercialStatus @default(SEM_RESPOSTA)
+  validityDays       Int                @default(30)
+  status             ProposalStatus     @default(ABERTA)
+  commercialStatus   CommercialStatus   @default(SEM_RESPOSTA)
   heroVideoUrl       String?
   weddingPhotoUrl    String?
-  theme              String?          @default("dark_luxury")
+  theme              String?            @default("dark_luxury")
   themeCustom        Json?
   sections           Json?
   backstageMedia     Json?
   differentialsMedia Json?
-  videoSoundEnabled  Boolean          @default(false)
+  videoSoundEnabled  Boolean            @default(false)
   sectionsConfig     Json?
   /// Proposta em blocos (spec 003). Nulo = proposta antiga, exibida com o layout legado.
   blocks             Json?
-  blocksVersion      Int              @default(1)
+  blocksVersion      Int                @default(1)
   /// Modelo usado na criação (sys-* do sistema ou id de ProposalTemplate).
   templateId         String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  packageIds         Package[]        @relation("ProposalPackages")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  packageIds         Package[]          @relation("ProposalPackages")
   views              ProposalView[]
   responses          ProposalResponse[]
 
@@ -375,4 +381,28 @@ enum ReceiptRiskLevel {
   LOW
   MEDIUM
   HIGH
+}
+
+/// Fila de e-mails (spec email-notifications): gravada na mesma transação do evento e enviada por um job com retry.
+model EmailOutbox {
+  id            String      @id @default(cuid())
+  to            String
+  template      String
+  payload       Json
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  lastError     String?
+  /// Impede e-mails repetidos para o mesmo evento e destinatário.
+  dedupeKey     String      @unique
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([status, nextAttemptAt])
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
 }

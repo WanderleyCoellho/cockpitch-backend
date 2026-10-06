@@ -18,7 +18,10 @@ export default defineConfig({
             OPS_ADMIN_PASSWORD: 'ops-password-test',
             TRUST_PROXY: '0',
             STORAGE_DRIVER: 'local',
-            LOCAL_STORAGE_DIR: 'storage/test-objects'
+            LOCAL_STORAGE_DIR: 'storage/test-objects',
+            EMAIL_JOB_ENABLED: 'false',
+            RESEND_API_KEY: '',
+            GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com'
         }
     }
 })

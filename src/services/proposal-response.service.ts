@@ -6,6 +6,8 @@ import { prisma } from '../lib/prisma.js'
 import { blockSchema } from './blocks.js'
 import { toPricingInput } from './package.service.js'
 import { calculatePackagePricing } from './pricing.js'
+import { kickEmailDispatch } from './email/outbox.js'
+import { notifyProposalResponse } from './notifications.service.js'
 
 /**
  * Aceite online (spec proposal-online-acceptance).
@@ -192,7 +194,7 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
             ? { selection: null, totalCents: null }
             : resolveSelection(proposal, input.packageId, input.optionalItemIds, input.type === 'ACCEPTED')
 
-    return prisma.$transaction(async (tx) => {
+    const saved = await prisma.$transaction(async (tx) => {
         // Condição no próprio UPDATE: com cliques duplos ou abas simultâneas, só a primeira resposta vence.
         const updated = await tx.proposal.updateMany({
             where: { id: proposal.id, status: 'ABERTA' },
@@ -200,7 +202,7 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
         })
         if (updated.count === 0) throw new HttpError(409, 'Esta proposta já foi respondida.', 'ALREADY_ACCEPTED')
 
-        return tx.proposalResponse.create({
+        const created = await tx.proposalResponse.create({
             data: {
                 proposalId: proposal.id,
                 type: input.type,
@@ -215,5 +217,10 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
                 userAgent: meta.userAgent?.slice(0, 500) ?? null
             }
         })
+        // Avisos por e-mail entram na fila na mesma transação: sem resposta gravada, sem e-mail.
+        await notifyProposalResponse(tx, created)
+        return created
     })
+    kickEmailDispatch()
+    return saved
 }

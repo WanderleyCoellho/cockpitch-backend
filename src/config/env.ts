@@ -37,6 +37,16 @@ const EnvSchema = z.object({
     BILLING_RECONCILIATION_MIN_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(60),
     // URL pública da API, usada para montar links de arquivos (ex.: https://api.deal.lumendevstudios.com).
     PUBLIC_API_URL: z.string().url().optional().or(z.literal('').transform(() => undefined)),
+    // E-mail (Resend). Sem chave, os e-mails são apenas registrados no log (modo console).
+    RESEND_API_KEY: z.string().default(''),
+    MAIL_FROM: z.string().default('Lumen Deal <notificacoes@mail.lumendevstudios.com>'),
+    // Job que envia a fila de e-mails a cada minuto (desligado nos testes, que chamam o envio direto).
+    EMAIL_JOB_ENABLED: z
+        .enum(['true', 'false'])
+        .default('true')
+        .transform((value) => value === 'true'),
+    // Entrar com Google: Client ID do tipo "Aplicativo da Web" no Google Cloud. Vazio = botão oculto.
+    GOOGLE_CLIENT_ID: z.string().default(''),
     // Armazenamento de arquivos: "local" (dev/teste) ou "s3" (Railway Buckets em produção).
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     LOCAL_STORAGE_DIR: z.string().default('storage/objects'),

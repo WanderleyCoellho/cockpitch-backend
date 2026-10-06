@@ -7,6 +7,8 @@ import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddl
 import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 import { resolveEntitlements } from '../services/entitlements.js'
 import { createInvite, getWorkspaceUsage, listUserWorkspaces } from '../services/workspace.service.js'
+import { kickEmailDispatch } from '../services/email/outbox.js'
+import { notifyTeamInvite } from '../services/notifications.service.js'
 
 const segmentSchema = z.enum([
     'PHOTO_VIDEO', 'EVENTS', 'AGENCY', 'CONSULTING', 'HEALTH_BEAUTY', 'CONSTRUCTION', 'EDUCATION', 'TECH', 'GENERAL'
@@ -116,8 +118,43 @@ workspaceRouter.post('/current/invites', requireRole('ADMIN'), async (req: Authe
         invitedById: req.auth!.userId
     })
 
-    // Até o envio por e-mail existir, o link é mostrado para a pessoa copiar e enviar.
-    return res.status(201).json({ invite, inviteUrl: `${env.FRONTEND_URL}/convite/${token}` })
+    // O convite sai por e-mail; o link continua disponível para copiar e mandar por outro canal.
+    const inviteUrl = `${env.FRONTEND_URL}/convite/${token}`
+    await notifyTeamInvite(prisma, {
+        inviteId: invite.id,
+        email: invite.email,
+        role: invite.role,
+        expiresAt: invite.expiresAt,
+        inviteUrl,
+        workspaceId: workspaceIdOf(req.auth),
+        invitedById: req.auth!.userId
+    })
+    kickEmailDispatch()
+    return res.status(201).json({ invite, inviteUrl, emailQueued: true })
+})
+
+const notificationPrefsSchema = z
+    .object({ notifyOnOpen: z.boolean().optional(), notifyOnResponse: z.boolean().optional() })
+    .refine((body) => body.notifyOnOpen !== undefined || body.notifyOnResponse !== undefined, { message: 'Nada para alterar' })
+
+// Preferências de e-mail da pessoa logada nesta empresa (qualquer papel).
+workspaceRouter.get('/current/notifications', async (req: AuthenticatedRequest, res) => {
+    const member = await prisma.workspaceMember.findUniqueOrThrow({
+        where: { workspaceId_userId: { workspaceId: workspaceIdOf(req.auth), userId: req.auth!.userId } },
+        select: { notifyOnOpen: true, notifyOnResponse: true }
+    })
+    return res.json({ preferences: member })
+})
+
+workspaceRouter.patch('/current/notifications', async (req: AuthenticatedRequest, res) => {
+    const parsed = notificationPrefsSchema.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
+    const member = await prisma.workspaceMember.update({
+        where: { workspaceId_userId: { workspaceId: workspaceIdOf(req.auth), userId: req.auth!.userId } },
+        data: parsed.data,
+        select: { notifyOnOpen: true, notifyOnResponse: true }
+    })
+    return res.json({ preferences: member })
 })
 
 workspaceRouter.delete('/current/invites/:inviteId', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {

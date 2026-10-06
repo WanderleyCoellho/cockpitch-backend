@@ -2,6 +2,7 @@ import { app } from './app.js'
 import { env } from './config/env.js'
 import { prisma } from './lib/prisma.js'
 import { startBillingReconciliationJob } from './jobs/billingReconciliation.job.js'
+import { startEmailOutboxJob } from './jobs/emailOutbox.job.js'
 
 // Rede de segurança: uma promise rejeitada fora do ciclo de requisição não derruba a API inteira.
 process.on('unhandledRejection', (reason) => {
@@ -11,6 +12,7 @@ process.on('unhandledRejection', (reason) => {
 const server = app.listen(env.PORT, () => {
     console.log(`[api] lumen-deal-api running on port ${env.PORT}`)
     startBillingReconciliationJob()
+    startEmailOutboxJob()
 })
 
 // Encerramento gracioso: o Railway envia SIGTERM no deploy; termina as requisições em andamento.
