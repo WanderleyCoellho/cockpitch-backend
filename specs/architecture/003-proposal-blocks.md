@@ -77,3 +77,10 @@ em vez de linhas com `workspaceId` null — versionados com o app e sem seed. As
 foi trocado por conversão sob demanda no editor (ao abrir uma proposta legada, o editor monta os blocos; ao salvar, grava
 `blocks`); a página pública mantém o layout legado enquanto `blocks` for null. Fora da v1: `style` por bloco e o bloco
 `acceptance` (entra com `proposal-online-acceptance.md`; até lá `cta` leva ao contato)._
+_Changelog: 2026-10-06 — frontend implementado. Página pública: renderer por tipo, com barra de progresso, menu
+lateral de seções, contato flutuante, lightbox, carrossel, acordeão e animações de entrada (respeita "reduzir movimento").
+Editor: escolha de modelo ao criar (recomendados pelo segmento da empresa, modelos da empresa, em branco), aba
+"Página" com lista arrastável (ocultar, duplicar, excluir, adicionar), formulário por bloco com dicas, pré-visualização
+ao vivo e "Salvar como modelo" (Profissional+; dono/admin). Proposta legada: botão "Converter esta proposta" monta os
+blocos a partir dos textos, depoimentos e mídias atuais; nada muda para o cliente até salvar. Correção junto:
+`heroVideoUrl`/`weddingPhotoUrl`/`serviceDate` vazios ("") passam a ser tratados como ausentes (antes recusavam a criação)._

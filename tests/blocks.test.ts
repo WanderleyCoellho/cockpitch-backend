@@ -185,3 +185,12 @@ describe('modelos da empresa', () => {
         ).toBe(404)
     })
 })
+
+describe('formulário do painel', () => {
+    it('campos opcionais vazios ("") não impedem criar a proposta', async () => {
+        const a = await createUser()
+        const res = await createProposal(a.auth, { providerId: a.provider.id, heroVideoUrl: '', weddingPhotoUrl: '', serviceDate: '', templateId: 'sys-general' })
+        expect(res.status).toBe(201)
+        expect(res.body.proposal.heroVideoUrl).toBeNull()
+    })
+})

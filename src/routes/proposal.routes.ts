@@ -20,19 +20,22 @@ const mediaItemSchema = z.object({
     type: z.enum(['image', 'video'])
 })
 
+/** Formulários enviam "" para campo não preenchido; tratamos como ausente em vez de recusar a proposta. */
+const emptyAsUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((value) => (value === '' ? undefined : value), schema)
+
 const createProposalSchema = z.object({
     providerId: z.string().cuid(),
     packageIds: z.array(z.string().cuid()).default([]),
     clientName: z.string().min(2),
     slug: z.string().min(3),
-    serviceDate: z.string().optional(),
+    serviceDate: emptyAsUndefined(z.string().max(40).optional()),
     validityDays: z.number().int().min(1).default(30),
     status: z.enum(['ABERTA', 'FECHADA', 'EXPIRADA', 'ARQUIVADA']).default('ABERTA'),
     commercialStatus: z
         .enum(['SEM_RESPOSTA', 'NEGOCIANDO', 'ACEITA', 'NEGADA', 'PERSONALIZADO'])
         .default('SEM_RESPOSTA'),
-    heroVideoUrl: z.string().url().optional(),
-    weddingPhotoUrl: z.string().url().optional(),
+    heroVideoUrl: emptyAsUndefined(z.string().url().optional()),
+    weddingPhotoUrl: emptyAsUndefined(z.string().url().optional()),
     theme: z.string().optional(),
     themeCustom: z.record(z.string(), z.any()).nullable().optional(),
     sections: z.array(z.any()).nullable().optional(),
