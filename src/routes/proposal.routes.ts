@@ -6,6 +6,12 @@ import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 import { assertCanCreateProposal } from '../services/workspace.service.js'
+import { serializePackage } from '../services/package.service.js'
+
+// Pacotes da proposta com preço calculado e quantidade numérica.
+function withPricedPackages<T extends { packageIds: Parameters<typeof serializePackage>[0][] }>(proposal: T) {
+    return { ...proposal, packageIds: proposal.packageIds.map(serializePackage) }
+}
 
 const mediaItemSchema = z.object({
     url: z.string().url(),
@@ -107,7 +113,7 @@ proposalRouter.get('/provider/:providerId', async (req: AuthenticatedRequest, re
         orderBy: { createdAt: 'desc' }
     })
 
-    return res.json({ proposals })
+    return res.json({ proposals: proposals.map(withPricedPackages) })
 })
 
 proposalRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
@@ -137,7 +143,7 @@ proposalRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
         return res.status(404).json({ message: 'Proposal not found' })
     }
 
-    return res.json({ proposal })
+    return res.json({ proposal: withPricedPackages(proposal) })
 })
 
 proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
@@ -202,7 +208,7 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
         }
     })
 
-    return res.status(201).json({ proposal })
+    return res.status(201).json({ proposal: withPricedPackages(proposal) })
 })
 
 proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
@@ -261,7 +267,7 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
         }
     })
 
-    return res.json({ proposal: updated })
+    return res.json({ proposal: withPricedPackages(updated) })
 })
 
 proposalRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
+import { serializePackage } from '../services/package.service.js'
 
 export const proposalPublicRouter = Router()
 
@@ -29,5 +30,5 @@ proposalPublicRouter.get('/proposals/:slug', async (req, res) => {
         return res.status(404).json({ message: 'Proposal not found' })
     }
 
-    return res.json({ proposal })
+    return res.json({ proposal: { ...proposal, packageIds: proposal.packageIds.map(serializePackage) } })
 })

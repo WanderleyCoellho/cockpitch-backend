@@ -27,7 +27,8 @@ pública, com o total atualizado ao vivo.
 - Assumido: o cliente final só seleciona opcionais e escolhe um pacote entre os oferecidos; não edita quantidades.
 
 ## 4. Limites e Casos de Borda (Fallbacks)
-- Máx. 100 itens por pacote; `quantity` entre 0,01 e 1.000.000; `unitPriceCents` ≤ 10^11.
+- Máx. 100 itens por pacote; `quantity` entre 0,01 e 10.000; `unitPriceCents` ≤ 1.000.000.000 (R$ 10 milhões).
+  Assumido: limites reduzidos em relação ao rascunho para que quantidade × valor caiba em inteiro seguro do JavaScript (< 2^53) sem biblioteca de números grandes.
 - `ON_REQUEST` exibe "Sob consulta" e não entra em totais.
 - Legado: pacotes sem itens precificados continuam exibindo `price` (texto).
 
@@ -35,3 +36,6 @@ pública, com o total atualizado ao vivo.
 - Unidade: `calculatePackageTotal` para os 3 modos, os 3 tipos de desconto, cortesia e opcionais (≥ 10 casos, incluindo arredondamento).
 - Integração: POST de item com `unitPriceCents` negativo → 400.
 - O frontend exibe o total recalculado ao ligar um opcional na página pública sem nova requisição.
+
+---
+_Changelog: 2026-10-06 — backend implementado: `services/pricing.ts` (módulo puro, cópia no frontend), migração com backfill (preço em texto → `fixedPriceCents`; texto não numérico → ON_REQUEST com rótulo; `isCourtesy` → `kind`), `price` legado recalculado a cada alteração, `pricing` nas respostas de pacotes e propostas._

@@ -145,35 +145,51 @@ model Provider {
 }
 
 model Package {
-  id             String        @id @default(cuid())
-  providerId     String
-  provider       Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  price          String
-  isHighlighted  Boolean       @default(false)
-  highlightLabel String?
-  highlightColor String?
-  order          Int           @default(0)
-  mediaUrl       String?
-  mediaType      String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  items          PackageItem[]
-  proposals      Proposal[]    @relation("ProposalPackages")
+  id              String           @id @default(cuid())
+  providerId      String
+  provider        Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  /// Legado/exibição: total calculado em reais ("3500.00"), mantido pelo servidor a cada alteração.
+  price           String
+  priceMode       PackagePriceMode @default(FIXED)
+  /// Valor fixo em centavos (priceMode = FIXED).
+  fixedPriceCents Int?
+  discountType    DiscountType     @default(NONE)
+  /// PERCENT: pontos-base (1000 = 10%). AMOUNT: centavos.
+  discountValue   Int              @default(0)
+  /// Texto opcional exibido junto ao preço (ex.: "a partir de", "por pessoa").
+  priceLabel      String?
+  isHighlighted   Boolean          @default(false)
+  highlightLabel  String?
+  highlightColor  String?
+  order           Int              @default(0)
+  mediaUrl        String?
+  mediaType       String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  items           PackageItem[]
+  proposals       Proposal[]       @relation("ProposalPackages")
 
   @@index([providerId])
 }
 
 model PackageItem {
-  id         String   @id @default(cuid())
-  packageId  String
-  package    Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  name       String
-  isCourtesy Boolean  @default(false)
-  order      Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String          @id @default(cuid())
+  packageId      String
+  package        Package         @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  /// Legado: espelho de kind = COURTESY.
+  isCourtesy     Boolean         @default(false)
+  kind           PackageItemKind @default(INCLUDED)
+  quantity       Decimal         @default(1) @db.Decimal(12, 2)
+  /// Unidade exibida (ex.: "h", "un", "diária").
+  unit           String?
+  unitPriceCents Int             @default(0)
+  order          Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([packageId])
 }
@@ -240,6 +256,24 @@ enum WorkspaceSegment {
   EDUCATION
   TECH
   GENERAL
+}
+
+enum PackagePriceMode {
+  SUM_OF_ITEMS
+  FIXED
+  ON_REQUEST
+}
+
+enum DiscountType {
+  NONE
+  PERCENT
+  AMOUNT
+}
+
+enum PackageItemKind {
+  INCLUDED
+  OPTIONAL
+  COURTESY
 }
 
 enum ProposalStatus {
