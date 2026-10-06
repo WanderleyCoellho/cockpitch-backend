@@ -7,6 +7,8 @@ import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddl
 import { requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 import { assertCanCreateProposal } from '../services/workspace.service.js'
 import { serializePackage } from '../services/package.service.js'
+import { blocksSchema, collectMediaUrls } from '../services/blocks.js'
+import { resolveTemplate } from '../services/template.service.js'
 
 // Pacotes da proposta com preço calculado e quantidade numérica.
 function withPricedPackages<T extends { packageIds: Parameters<typeof serializePackage>[0][] }>(proposal: T) {
@@ -37,7 +39,11 @@ const createProposalSchema = z.object({
     backstageMedia: z.array(mediaItemSchema).nullable().optional(),
     differentialsMedia: z.array(mediaItemSchema).nullable().optional(),
     videoSoundEnabled: z.boolean().optional(),
-    sectionsConfig: z.record(z.string(), z.any()).nullable().optional()
+    sectionsConfig: z.record(z.string(), z.any()).nullable().optional(),
+    /** Proposta em blocos (spec 003). */
+    blocks: blocksSchema.nullable().optional(),
+    /** Criar a partir de um modelo: sys-* (sistema) ou id de modelo da empresa. Usado só se `blocks` não vier. */
+    templateId: z.string().max(40).optional()
 })
 
 const updateProposalSchema = createProposalSchema.partial().refine(
@@ -54,6 +60,12 @@ function toNullableJsonInput(value: unknown) {
 }
 
 proposalRouter.use(requireAuth, requireWorkspace)
+
+/** Toda mídia usada nos blocos precisa ter sido enviada pela própria API (nada de links de terceiros). */
+function firstUntrustedBlockUrl(blocks: z.infer<typeof blocksSchema> | null | undefined, req: AuthenticatedRequest) {
+    if (!blocks) return null
+    return collectMediaUrls(blocks).find((url) => !isTrustedUploadUrl(url, req)) ?? null
+}
 
 // Helper para validar propriedade do provider
 async function verifyProviderOwnership(auth: any, providerId: string) {
@@ -165,6 +177,9 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
     if (parsed.data.weddingPhotoUrl && !isTrustedUploadUrl(parsed.data.weddingPhotoUrl, req)) {
         return res.status(400).json({ message: 'weddingPhotoUrl must be a trusted uploaded file URL' })
     }
+    if (firstUntrustedBlockUrl(parsed.data.blocks, req)) {
+        return res.status(400).json({ message: 'Use apenas mídias enviadas pelo Lumen Deal nos blocos.', code: 'UNTRUSTED_MEDIA' })
+    }
 
     const provider = await verifyProviderOwnership(auth, parsed.data.providerId)
     if (!provider) {
@@ -178,6 +193,13 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
     // Limite mensal do plano (402 PLAN_LIMIT → o painel oferece upgrade).
     await assertCanCreateProposal(workspaceIdOf(auth))
 
+    // Modelo: copia os blocos (cópia, não vínculo — editar o modelo depois não muda propostas já enviadas).
+    const template = parsed.data.templateId ? await resolveTemplate(parsed.data.templateId, workspaceIdOf(auth)) : null
+    if (parsed.data.templateId && !template) {
+        return res.status(404).json({ message: 'Modelo não encontrado', code: 'TEMPLATE_NOT_FOUND' })
+    }
+    const blocks = parsed.data.blocks ?? template?.blocks ?? undefined
+
     const proposal = await prisma.proposal.create({
         data: {
             providerId: parsed.data.providerId,
@@ -189,13 +211,15 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
             commercialStatus: parsed.data.commercialStatus,
             heroVideoUrl: parsed.data.heroVideoUrl,
             weddingPhotoUrl: parsed.data.weddingPhotoUrl,
-            theme: parsed.data.theme,
+            theme: parsed.data.theme ?? template?.theme ?? undefined,
             themeCustom: toNullableJsonInput(parsed.data.themeCustom),
             sections: toNullableJsonInput(parsed.data.sections),
             backstageMedia: toNullableJsonInput(parsed.data.backstageMedia),
             differentialsMedia: toNullableJsonInput(parsed.data.differentialsMedia),
             videoSoundEnabled: parsed.data.videoSoundEnabled,
             sectionsConfig: toNullableJsonInput(parsed.data.sectionsConfig),
+            blocks: toNullableJsonInput(blocks),
+            templateId: template?.id,
             packageIds: {
                 connect: parsed.data.packageIds.map((id) => ({ id }))
             }
@@ -231,13 +255,16 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     if (parsed.data.weddingPhotoUrl && !isTrustedUploadUrl(parsed.data.weddingPhotoUrl, req)) {
         return res.status(400).json({ message: 'weddingPhotoUrl must be a trusted uploaded file URL' })
     }
+    if (firstUntrustedBlockUrl(parsed.data.blocks, req)) {
+        return res.status(400).json({ message: 'Use apenas mídias enviadas pelo Lumen Deal nos blocos.', code: 'UNTRUSTED_MEDIA' })
+    }
 
     const proposal = await verifyProposalOwnership(auth, id)
     if (!proposal) {
         return res.status(404).json({ message: 'Proposal not found' })
     }
 
-    const { packageIds, providerId: _providerId, ...data } = parsed.data
+    const { packageIds, providerId: _providerId, templateId: _templateId, ...data } = parsed.data
 
     if (packageIds && !(await packagesBelongToProvider(packageIds, proposal.providerId))) {
         return res.status(403).json({ message: 'One or more packages do not belong to this provider' })
@@ -253,6 +280,7 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
             differentialsMedia: toNullableJsonInput(data.differentialsMedia),
             videoSoundEnabled: data.videoSoundEnabled,
             sectionsConfig: toNullableJsonInput(data.sectionsConfig),
+            blocks: toNullableJsonInput(data.blocks),
             packageIds: packageIds
                 ? {
                     set: packageIds.map((pkgId) => ({ id: pkgId }))

@@ -6,7 +6,7 @@ import { createWorkspaceWithOwner } from '../src/services/workspace.service.js'
 
 export async function resetDatabase() {
     await prisma.$executeRawUnsafe(
-        'TRUNCATE "ProposalView", "Proposal", "PackageItem", "Package", "Provider", "PaymentReceipt", "WorkspaceInvite", "WorkspaceMember", "Workspace", "User" RESTART IDENTITY CASCADE'
+        'TRUNCATE "ProposalView", "Proposal", "ProposalTemplate", "PackageItem", "Package", "Provider", "PaymentReceipt", "WorkspaceInvite", "WorkspaceMember", "Workspace", "User" RESTART IDENTITY CASCADE'
     )
 }
 

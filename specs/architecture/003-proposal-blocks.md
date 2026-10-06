@@ -64,3 +64,16 @@ componente por tipo.
 ## 7. Riscos e Rollback
 - JSON grande demais: limite de 60 blocos e 512 KB por proposta.
 - Rollback: o renderer legado continua até o passo 3.
+
+---
+_Changelog: 2026-10-06 — backend implementado: `services/blocks.ts` (união discriminada estrita, 12 tipos v1,
+60 blocos/512 KB, ids únicos, texto rico sanitizado, mídia só de upload da própria API → 400 `UNTRUSTED_MEDIA`),
+`ProposalTemplate` + rotas `/api/templates` (GET lista sistema + empresa; POST ADMIN, a partir de `fromProposalId`
+ou `blocks`, exige `customTemplates` → 402 nos planos Grátis/Essencial; DELETE), criação de proposta com `templateId`
+(cópia dos blocos e do tema, não vínculo), endpoint público devolve `blocks`.
+Assumido: modelos do sistema ficam no código (`services/templates/systemTemplates.ts`, ids `sys-*`, 1 por segmento)
+em vez de linhas com `workspaceId` null — versionados com o app e sem seed. Assumido: o backend usa `sanitize-html`
+(já adotado na Fase 0) no lugar de `isomorphic-dompurify`. Assumido: o passo 2 do plano de migração (conversão em massa)
+foi trocado por conversão sob demanda no editor (ao abrir uma proposta legada, o editor monta os blocos; ao salvar, grava
+`blocks`); a página pública mantém o layout legado enquanto `blocks` for null. Fora da v1: `style` por bloco e o bloco
+`acceptance` (entra com `proposal-online-acceptance.md`; até lá `cta` leva ao contato)._
