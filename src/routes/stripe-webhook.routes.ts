@@ -27,6 +27,19 @@ function customerOf(object: { customer?: string | Stripe.Customer | Stripe.Delet
     return typeof customer === 'string' ? customer : customer.id
 }
 
+/** Registro dos avisos recebidos (painel Ops). Nunca derruba o webhook. */
+async function logStripeEvent(event: Stripe.Event, customerId: string | null, outcome: string, error?: string) {
+    const data = { type: event.type, customerId, outcome, error: error?.slice(0, 500) ?? null, receivedAt: new Date() }
+    await prisma.stripeEventLog
+        .upsert({ where: { id: event.id }, create: { id: event.id, ...data }, update: data })
+        .catch((err) => console.error('[stripe-webhook] falha ao registrar evento', err))
+    // Guarda só os últimos 90 dias (limpeza ocasional, sem job próprio).
+    if (Math.random() < 0.02) {
+        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+        await prisma.stripeEventLog.deleteMany({ where: { receivedAt: { lt: cutoff } } }).catch(() => undefined)
+    }
+}
+
 stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res) => {
     const signature = req.headers['stripe-signature']
 
@@ -43,25 +56,31 @@ stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res
         return res.status(400).json({ message })
     }
 
-    if (!(HANDLED_STRIPE_EVENTS as readonly string[]).includes(event.type)) {
+    const object = event.data.object as { customer?: string | Stripe.Customer | Stripe.DeletedCustomer | null }
+    const customerId = customerOf(object)
+
+    if (!(HANDLED_STRIPE_EVENTS as readonly string[]).includes(event.type) || !customerId) {
+        await logStripeEvent(event, customerId, 'ignored')
         return res.status(200).json({ received: true, ignored: true })
     }
 
-    const object = event.data.object as { customer?: string | Stripe.Customer | Stripe.DeletedCustomer | null }
-    const customerId = customerOf(object)
-    if (!customerId) return res.status(200).json({ received: true })
-
-    // Checkout concluído antes de o cliente ficar salvo no workspace: liga pelo workspaceId da sessão.
-    if (event.type.startsWith('checkout.session.')) {
-        const session = event.data.object as Stripe.Checkout.Session
-        const workspaceId = session.client_reference_id ?? session.metadata?.workspaceId
-        if (workspaceId) {
-            await prisma.workspace.updateMany({ where: { id: workspaceId, stripeCustomerId: null }, data: { stripeCustomerId: customerId } })
+    try {
+        // Checkout concluído antes de o cliente ficar salvo no workspace: liga pelo workspaceId da sessão.
+        if (event.type.startsWith('checkout.session.')) {
+            const session = event.data.object as Stripe.Checkout.Session
+            const workspaceId = session.client_reference_id ?? session.metadata?.workspaceId
+            if (workspaceId) {
+                await prisma.workspace.updateMany({ where: { id: workspaceId, stripeCustomerId: null }, data: { stripeCustomerId: customerId } })
+            }
         }
-    }
 
-    // Estado lido do Stripe na hora: eventos fora de ordem ou repetidos dão o mesmo resultado.
-    // Se falhar, responde 500 e o Stripe reenvia.
-    await syncStripeCustomer(customerId)
+        // Estado lido do Stripe na hora: eventos fora de ordem ou repetidos dão o mesmo resultado.
+        const synced = await syncStripeCustomer(customerId)
+        await logStripeEvent(event, customerId, synced ? 'synced' : 'unknown_customer')
+    } catch (error) {
+        await logStripeEvent(event, customerId, 'error', error instanceof Error ? error.message : String(error))
+        // Responde 500 para o Stripe reenviar.
+        throw error
+    }
     return res.status(200).json({ received: true })
 })

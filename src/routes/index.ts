@@ -10,6 +10,7 @@ import { proposalViewRouter } from './proposal-view.routes.js'
 import { stripeRouter } from './stripe.routes.js'
 import { uploadRouter } from './upload.routes.js'
 import { internalRouter } from './internal.routes.js'
+import { opsRouter } from './ops.routes.js'
 import { paymentReceiptRouter } from './payment-receipt.routes.js'
 import { opsAuthRouter } from './ops-auth.routes.js'
 import { workspaceRouter } from './workspace.routes.js'
@@ -33,4 +34,5 @@ apiRouter.use(uploadRouter)
 apiRouter.use('/payment-receipts', paymentReceiptRouter)
 apiRouter.use(healthRouter)
 apiRouter.use(stripeRouter)
+apiRouter.use('/internal/ops', opsRouter)
 apiRouter.use('/internal', internalRouter)

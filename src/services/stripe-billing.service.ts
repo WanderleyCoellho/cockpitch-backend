@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js'
 import { getStripe } from '../lib/stripe.js'
 import { mapBillingStatus, resolvePlanFromSubscription, type AppBillingStatus, type AppPlanTier } from '../lib/billing.js'
 import { applyStripeBilling } from './license.service.js'
+import { billingEventsFor, recordWorkspaceEvents } from './workspace-events.service.js'
 
 const ACCESS_STATUSES: Stripe.Subscription.Status[] = ['active', 'trialing', 'past_due', 'unpaid']
 
@@ -17,15 +18,22 @@ export function pickBestSubscription(subscriptions: Stripe.Subscription[]): Stri
     )
 }
 
-export type BillingState = { planTier: AppPlanTier; billingStatus: AppBillingStatus; stripeSubscriptionId: string | null }
+export type BillingState = {
+    planTier: AppPlanTier
+    billingStatus: AppBillingStatus
+    stripeSubscriptionId: string | null
+    /** Cancelamento agendado (fim do período pago), quando houver. */
+    subscriptionCancelAt: Date | null
+}
 
 export function resolveBillingState(currentTier: AppPlanTier, subscription: Stripe.Subscription | null): BillingState {
-    if (!subscription) return { planTier: 'FREE', billingStatus: 'INACTIVE', stripeSubscriptionId: null }
+    if (!subscription) return { planTier: 'FREE', billingStatus: 'INACTIVE', stripeSubscriptionId: null, subscriptionCancelAt: null }
     const billingStatus = mapBillingStatus(subscription.status)
     const hasAccess = billingStatus === 'ACTIVE' || billingStatus === 'PAST_DUE'
     // Preço desconhecido preserva o plano atual: nunca rebaixa por engano.
     const planTier: AppPlanTier = hasAccess ? resolvePlanFromSubscription(subscription) ?? currentTier : 'FREE'
-    return { planTier, billingStatus, stripeSubscriptionId: subscription.id }
+    const subscriptionCancelAt = hasAccess && subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null
+    return { planTier, billingStatus, stripeSubscriptionId: subscription.id, subscriptionCancelAt }
 }
 
 export async function listCustomerSubscriptions(customerId: string) {
@@ -40,7 +48,14 @@ export async function listCustomerSubscriptions(customerId: string) {
 export async function syncStripeCustomer(customerId: string): Promise<(BillingState & { changed: boolean }) | null> {
     const workspace = await prisma.workspace.findFirst({
         where: { stripeCustomerId: customerId },
-        select: { planTier: true, billingStatus: true, stripeSubscriptionId: true, licensePolicy: true }
+        select: {
+            id: true,
+            planTier: true,
+            billingStatus: true,
+            stripeSubscriptionId: true,
+            subscriptionCancelAt: true,
+            licensePolicy: true
+        }
     })
     if (!workspace || workspace.licensePolicy === 'COURTESY') return null
 
@@ -49,8 +64,15 @@ export async function syncStripeCustomer(customerId: string): Promise<(BillingSt
     const changed =
         workspace.planTier !== next.planTier ||
         workspace.billingStatus !== next.billingStatus ||
-        workspace.stripeSubscriptionId !== next.stripeSubscriptionId
-    if (changed) await applyStripeBilling(customerId, next)
+        workspace.stripeSubscriptionId !== next.stripeSubscriptionId ||
+        workspace.subscriptionCancelAt?.getTime() !== next.subscriptionCancelAt?.getTime()
+    if (changed) {
+        const { subscriptionCancelAt, ...license } = next
+        await applyStripeBilling(customerId, license)
+        await prisma.workspace.update({ where: { id: workspace.id }, data: { subscriptionCancelAt } })
+        // Histórico para o painel Ops (assinou, trocou de plano, atrasou, cancelou...).
+        await recordWorkspaceEvents(workspace.id, billingEventsFor(workspace, next))
+    }
     return { ...next, changed }
 }
 

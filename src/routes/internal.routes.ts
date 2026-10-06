@@ -95,7 +95,7 @@ function auditManualRun(payload: {
     })
 }
 
-function ensureInternalAccess(req: Request, res: Response) {
+export function ensureInternalAccess(req: Request, res: Response) {
     const header = req.headers.authorization
     const bearerToken = header && header.startsWith('Bearer ') ? header.replace('Bearer ', '').trim() : null
     const cookieToken = getCookieValue(req, env.OPS_COOKIE_NAME)

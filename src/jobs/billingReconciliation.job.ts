@@ -11,6 +11,13 @@ type ReconcileResult = {
     skippedCourtesy: number
 }
 
+let lastRun: { at: string; result: ReconcileResult } | null = null
+
+/** Última conferência completa deste processo (painel Ops). Zera a cada deploy. */
+export function getLastReconciliation() {
+    return lastRun
+}
+
 export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
     // O plano pertence ao workspace (cliente Stripe = workspace).
     const users = await prisma.workspace.findMany({
@@ -55,6 +62,7 @@ export async function runBillingReconciliationOnce(): Promise<ReconcileResult> {
     }
 
     console.log('[billing-reconciliation] done', result)
+    lastRun = { at: new Date().toISOString(), result }
     return result
 }
 

@@ -49,12 +49,56 @@ model Workspace {
   licensePolicyNote    String?
   stripeCustomerId     String?            @unique
   stripeSubscriptionId String?
+  /// Cancelamento agendado no Stripe (vale até o fim do período pago).
+  subscriptionCancelAt DateTime?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
+  events               WorkspaceEvent[]
   members              WorkspaceMember[]
   invites              WorkspaceInvite[]
   providers            Provider[]
   templates            ProposalTemplate[]
+}
+
+/// Histórico de cobrança e licença da empresa (painel Ops).
+model WorkspaceEvent {
+  id          String             @id @default(cuid())
+  workspaceId String
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        WorkspaceEventType
+  /// Detalhes do evento (plano anterior/novo, data, observação).
+  detail      Json?
+  createdAt   DateTime           @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([type, createdAt])
+}
+
+enum WorkspaceEventType {
+  SUBSCRIBED
+  PLAN_CHANGED
+  PAYMENT_FAILED
+  PAYMENT_RECOVERED
+  CANCEL_SCHEDULED
+  CANCEL_REVERTED
+  CANCELED
+  COURTESY_GRANTED
+  COURTESY_REVOKED
+  LICENSE_CHANGED
+}
+
+/// Avisos recebidos do Stripe (webhook), para o painel Ops e diagnóstico.
+model StripeEventLog {
+  /// ID do evento no Stripe (evt_...): reenvios do mesmo evento não duplicam.
+  id         String   @id
+  type       String
+  customerId String?
+  /// synced | ignored | unknown_customer | error
+  outcome    String
+  error      String?
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
 }
 
 /// Modelo de proposta salvo por uma empresa (os modelos do sistema ficam no código).
