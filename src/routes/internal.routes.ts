@@ -6,6 +6,7 @@ import { verifyOpsAccessToken } from '../lib/opsJwt.js'
 import { getCookieValue } from '../lib/httpCookies.js'
 import { prisma } from '../lib/prisma.js'
 import { syncOwnedWorkspaceLicense } from '../services/license.service.js'
+import { resolveEntitlements } from '../services/entitlements.js'
 import path from 'path'
 import fs from 'fs'
 import { legacyReceiptUploadsDir, receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
@@ -331,15 +332,42 @@ internalRouter.get('/licensing/users', async (req, res) => {
             stripeCustomerId: true,
             stripeSubscriptionId: true,
             createdAt: true,
-            updatedAt: true
+            updatedAt: true,
+            memberships: {
+                select: {
+                    role: true,
+                    workspace: {
+                        select: { id: true, name: true, planTier: true, billingStatus: true, licensePolicy: true }
+                    }
+                },
+                orderBy: { createdAt: 'asc' }
+            }
         },
         take: limit,
         orderBy: { updatedAt: 'asc' }
     })
 
+    // Plano é da empresa: mostra de quais empresas a pessoa participa, com papel e plano efetivo.
+    // `ownsWorkspace` indica se a licença editável (a da empresa própria) existe.
     return res.json({
         count: users.length,
-        users
+        users: users.map(({ memberships, ...user }) => ({
+            ...user,
+            ownsWorkspace: memberships.some((m) => m.role === 'OWNER'),
+            workspaces: memberships.map((m) => {
+                const entitlements = resolveEntitlements(m.workspace)
+                return {
+                    id: m.workspace.id,
+                    name: m.workspace.name,
+                    role: m.role,
+                    planTier: m.workspace.planTier,
+                    billingStatus: m.workspace.billingStatus,
+                    licensePolicy: m.workspace.licensePolicy,
+                    effectiveTier: entitlements.effectiveTier,
+                    members: entitlements.members
+                }
+            })
+        }))
     })
 })
 
@@ -357,6 +385,15 @@ internalRouter.patch('/licensing/users/:userId', async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.params.userId } })
     if (!user) {
         return res.status(404).json({ message: 'User not found' })
+    }
+
+    // Membro convidado sem empresa própria: a licença dele vem da empresa em que participa.
+    const ownsWorkspace = await prisma.workspaceMember.count({ where: { userId: user.id, role: 'OWNER' } })
+    if (!ownsWorkspace) {
+        return res.status(409).json({
+            message: 'Esta pessoa não tem empresa própria; ela usa o plano da empresa em que é membro. Altere a licença do dono dessa empresa.',
+            code: 'NO_OWNED_WORKSPACE'
+        })
     }
 
     const licenseData = {

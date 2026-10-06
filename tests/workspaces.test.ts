@@ -226,3 +226,24 @@ describe('Stripe → workspace', () => {
         expect(await prisma.workspace.findUniqueOrThrow({ where: { id: c.workspace.id } })).toMatchObject({ planTier: 'PRO', licensePolicy: 'COURTESY' })
     })
 })
+
+describe('Ops: membros de equipe', () => {
+    it('lista as empresas da pessoa com papel e plano efetivo; membro sem empresa própria não tem licença editável', async () => {
+        const { signOpsAccessToken } = await import('../src/lib/opsJwt.js')
+        const ops = `Bearer ${signOpsAccessToken({ role: 'OPS_ADMIN', email: 'ops@test.local' })}`
+        const owner = await createUser('Dona', { planTier: 'AGENCY', billingStatus: 'ACTIVE', licensePolicy: 'COURTESY' })
+        const member = await addMember(owner.workspace.id, 'MEMBER', 'Membro Convidado')
+
+        const list = await request(app).get('/api/internal/licensing/users?limit=50').set('Authorization', ops)
+        expect(list.status).toBe(200)
+        const row = list.body.users.find((u: { id: string }) => u.id === member.user.id)
+        expect(row.ownsWorkspace).toBe(false)
+        expect(row.workspaces).toEqual([
+            expect.objectContaining({ name: 'Dona Ltda', role: 'MEMBER', licensePolicy: 'COURTESY', effectiveTier: 'AGENCY', members: 10 })
+        ])
+
+        const patch = await request(app).patch(`/api/internal/licensing/users/${member.user.id}`).set('Authorization', ops).send({ planTier: 'PRO' })
+        expect(patch.status).toBe(409)
+        expect(patch.body.code).toBe('NO_OWNED_WORKSPACE')
+    })
+})
