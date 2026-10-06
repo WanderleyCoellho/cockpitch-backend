@@ -29,3 +29,14 @@ inclui a página de **comprovante de aceite** (nome, e-mail, data/hora, IP, hash
 ## 5. Critérios de Aceite (Para o Test Harness)
 - A rota de impressão renderiza todos os tipos de bloco sem elementos interativos.
 - Teste manual: Chrome/Safari/Edge geram PDF A4 com texto selecionável e sem páginas em branco.
+
+---
+_Changelog: 2026-10-07 — v1 implementada. Rota `/p/:slug/print` com `PrintDocument` (layout A4 estático por bloco: FAQ e
+depoimentos abertos, galeria em grade, vídeos viram aviso com link, tabela de itens, escolhido/opcionais incluídos),
+`@page` com margens, cor do tema na folha inteira e rodapé (empresa, cliente, validade, "Página X de Y" e
+"Feito com Lumen Deal" quando o plano não remove a marca). Seleção pelo link (`?pkg=&opt=`) ou, após o aceite, a seleção aceita.
+Comprovante de aceite em página própria: público com nome, data, pacote, total e código; equipe logada vê também e-mail,
+documento, IP e navegador. Abre o diálogo de impressão sozinho (`?auto=1`) depois de imagens/fontes ou 5 s.
+Botões "PDF" no cabeçalho da proposta (com a escolha atual), na confirmação do aceite e nos cartões do painel.
+Verificado com Chromium: A4, texto selecionável, sem páginas em branco. Propostas no layout antigo saem pela versão em blocos.
+Decisão de produto (2026-10-07): o plano Grátis inclui aceite online, PDF e avisos por e-mail; o limite é volume e marca._

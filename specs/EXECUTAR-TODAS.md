@@ -21,7 +21,7 @@
 7. **Aceite online** — `specs/proposal-online-acceptance.md` — Depende de: 5. — ✅ concluído em 2026-10-06 (bloco de aceite, evidência com hash, aba Respostas e reabrir).
 8. **Notificações por e-mail** — `specs/email-notifications.md` — Depende de: 3, 7 — ✅ concluído em 2026-10-07 (fila com novas tentativas, avisos de abertura/respostas, confirmação ao cliente, convites, preferências).
 9. **Entrar e cadastrar com Google** — `specs/google-sign-in.md` — Depende de: 3 — ✅ concluído em 2026-10-07 (falta o Client ID no Railway para ligar).
-10. **Exportar PDF (impressão)** — `specs/pdf-export.md` — Depende de: 5.
+10. **Exportar PDF (impressão)** — `specs/pdf-export.md` — Depende de: 5. — ✅ concluído em 2026-10-07 (rota de impressão A4, comprovante de aceite, botões no público e no painel).
 
 ---
 _Gerado em 2026-10-05 a partir de: process/001, architecture/001–003, priced-line-items,
