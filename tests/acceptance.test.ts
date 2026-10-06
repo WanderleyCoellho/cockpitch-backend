@@ -106,6 +106,8 @@ describe('aceite online', () => {
         expect(pub.body.acceptance).toMatchObject({ enabled: true, state: 'ACCEPTED', acceptedBy: 'Maria da Silva' })
         expect(JSON.stringify(pub.body.acceptance)).not.toContain('example.com')
         expect(pub.body.acceptance.accepted).toEqual({
+            packageId: packages[0].id,
+            optionalIds: [optional.id],
             packageName: 'Pacote 1',
             optionals: ['Relatório extra'],
             totalCents: 135000,

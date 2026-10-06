@@ -74,6 +74,8 @@ export type AcceptanceState = {
     acceptedBy?: string
     /** O que foi aceito (para a página e o PDF); sem dados pessoais além do nome. */
     accepted?: {
+        packageId: string | null
+        optionalIds: string[]
         packageName: string | null
         optionals: string[]
         totalCents: number | null
@@ -95,13 +97,15 @@ export async function acceptanceStateFor(proposal: Proposal): Promise<Acceptance
                   })
                 : null
         if (!accepted) return { ...base, state: 'CLOSED' }
-        const selection = accepted.selection as { packageName?: string; optionals?: Array<{ name: string }> } | null
+        const selection = accepted.selection as { packageId?: string; packageName?: string; optionals?: Array<{ id: string; name: string }> } | null
         return {
             ...base,
             state: 'ACCEPTED',
             acceptedAt: accepted.createdAt.toISOString(),
             acceptedBy: accepted.signerName,
             accepted: {
+                packageId: selection?.packageId ?? null,
+                optionalIds: selection?.optionals?.map((o) => o.id) ?? [],
                 packageName: selection?.packageName ?? null,
                 optionals: selection?.optionals?.map((o) => o.name) ?? [],
                 totalCents: accepted.totalCents,
