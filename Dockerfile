@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---------- build: instala TODAS as dependências (tsc é devDependency) ----------
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
@@ -13,7 +13,7 @@ COPY src ./src
 RUN npm run build
 
 # ---------- runtime: só dependências de produção (inclui o Prisma CLI para rodar as migrações) ----------
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
