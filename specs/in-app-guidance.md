@@ -44,3 +44,13 @@ Duas frentes, pedidas explicitamente:
 - Teste unitário: todas as `helpKey` usadas nos formulários existem no catálogo (varredura).
 - `/ajuda` lista todas as entradas do catálogo e a busca filtra por título/conteúdo.
 - O checklist reflete o estado real (ex.: criar o primeiro pacote marca o passo).
+
+---
+_Changelog: 2026-10-07 — concluído. Checklist de primeiros passos no Dashboard calculado do estado real (perfil com contato e
+apresentação, pacote, proposta, link compartilhado, primeira abertura) com `GET /workspaces/current/onboarding` e
+`PATCH /auth/me/onboarding` (`User.onboarding`). Tours guiados sem dependência nova (destaque do elemento, Esc, setas,
+uma vez por pessoa e tela; reabrir/desligar/rever todos pelo botão "Ajuda") em Dashboard, Propostas, Pacotes e Equipe.
+Central de ajuda `/ajuda` com 11 artigos Markdown (`src/shared/help/articles/NN-slug.md`, tabelas via `remark-gfm`) e o
+catálogo de dicas agrupado por área; busca sem acento. Todo item do catálogo tem "Saiba mais" para um artigo (teste).
+Estados vazios didáticos em Propostas e Pacotes. Dashboard deixa o modelo legado "Prestadores" e mostra o perfil da empresa.
+Assumido: `/api/me/onboarding` ficou em `/api/auth/me/onboarding`, junto de `/auth/me`._
