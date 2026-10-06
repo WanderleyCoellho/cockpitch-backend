@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
 import { serializePackage } from '../services/package.service.js'
+import { resolveEntitlements } from '../services/entitlements.js'
 import { proposalResponseRateLimit } from '../middlewares/rateLimit.js'
 import { acceptanceStateFor, responseInputSchema, submitProposalResponse } from '../services/proposal-response.service.js'
 
@@ -14,7 +15,8 @@ proposalPublicRouter.get('/proposals/:slug', async (req, res) => {
         include: {
             // Perfil público: sem userId nem timestamps internos.
             provider: {
-                omit: { userId: true, createdAt: true, updatedAt: true }
+                omit: { userId: true, createdAt: true, updatedAt: true },
+                include: { workspace: { select: { planTier: true, billingStatus: true, licensePolicy: true } } }
             },
             packageIds: {
                 include: { items: { orderBy: { order: 'asc' } } },
@@ -32,9 +34,13 @@ proposalPublicRouter.get('/proposals/:slug', async (req, res) => {
         return res.status(404).json({ message: 'Proposal not found' })
     }
 
+    // O plano da empresa só decide a marca "Feito com Lumen Deal"; nada do plano em si é exposto.
+    const { workspace, ...provider } = proposal.provider
+    const removeBranding = workspace ? resolveEntitlements(workspace).removeBranding : false
     return res.json({
-        proposal: { ...proposal, packageIds: proposal.packageIds.map(serializePackage) },
-        acceptance: await acceptanceStateFor(proposal)
+        proposal: { ...proposal, provider, packageIds: proposal.packageIds.map(serializePackage) },
+        acceptance: await acceptanceStateFor(proposal),
+        branding: { removeBranding }
     })
 })
 

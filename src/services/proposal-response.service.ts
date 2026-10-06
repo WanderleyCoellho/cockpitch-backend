@@ -72,6 +72,13 @@ export type AcceptanceState = {
     expiresAt: string
     acceptedAt?: string
     acceptedBy?: string
+    /** O que foi aceito (para a página e o PDF); sem dados pessoais além do nome. */
+    accepted?: {
+        packageName: string | null
+        optionals: string[]
+        totalCents: number | null
+        contentHash: string
+    }
 }
 
 /** Estado exibido na página pública. Não expõe e-mail, documento nem IP de quem respondeu. */
@@ -84,12 +91,23 @@ export async function acceptanceStateFor(proposal: Proposal): Promise<Acceptance
                 ? await prisma.proposalResponse.findFirst({
                       where: { proposalId: proposal.id, type: 'ACCEPTED' },
                       orderBy: { createdAt: 'desc' },
-                      select: { createdAt: true, signerName: true }
+                      select: { createdAt: true, signerName: true, selection: true, totalCents: true, contentHash: true }
                   })
                 : null
-        return accepted
-            ? { ...base, state: 'ACCEPTED', acceptedAt: accepted.createdAt.toISOString(), acceptedBy: accepted.signerName }
-            : { ...base, state: 'CLOSED' }
+        if (!accepted) return { ...base, state: 'CLOSED' }
+        const selection = accepted.selection as { packageName?: string; optionals?: Array<{ name: string }> } | null
+        return {
+            ...base,
+            state: 'ACCEPTED',
+            acceptedAt: accepted.createdAt.toISOString(),
+            acceptedBy: accepted.signerName,
+            accepted: {
+                packageName: selection?.packageName ?? null,
+                optionals: selection?.optionals?.map((o) => o.name) ?? [],
+                totalCents: accepted.totalCents,
+                contentHash: accepted.contentHash
+            }
+        }
     }
     if (expiresAt.getTime() < Date.now()) return { ...base, state: 'EXPIRED' }
     return { ...base, state: 'OPEN' }

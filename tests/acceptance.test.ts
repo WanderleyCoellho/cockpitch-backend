@@ -60,6 +60,22 @@ function respond(slug: string, body: Record<string, unknown>) {
     return request(app).post(`/api/public/proposals/${slug}/responses`).set('User-Agent', 'vitest-browser').send(body)
 }
 
+describe('marca na página pública', () => {
+    it('Grátis mostra "Feito com Lumen Deal"; planos pagos removem; o plano não é exposto', async () => {
+        const free = await createUser('Grátis', { planTier: 'FREE', billingStatus: 'ACTIVE' })
+        const pro = await createUser('Pro', { planTier: 'PRO', billingStatus: 'ACTIVE' })
+        for (const [u, slug] of [[free, 'marca-gratis'], [pro, 'marca-pro']] as const) {
+            await request(app).post('/api/proposals').set('Authorization', u.auth).send({ providerId: u.provider.id, clientName: 'Cliente', slug })
+        }
+        const a = await request(app).get('/api/public/proposals/marca-gratis')
+        const b = await request(app).get('/api/public/proposals/marca-pro')
+        expect(a.body.branding).toEqual({ removeBranding: false })
+        expect(b.body.branding).toEqual({ removeBranding: true })
+        expect(JSON.stringify(b.body)).not.toContain('planTier')
+        expect(b.body.proposal.provider.workspace).toBeUndefined()
+    })
+})
+
 describe('aceite online', () => {
     it('aceite válido: 201, total calculado no servidor, evidência e status atualizados', async () => {
         const { slug, proposalId, packages } = await setup()
@@ -89,6 +105,13 @@ describe('aceite online', () => {
         const pub = await request(app).get(`/api/public/proposals/${slug}`)
         expect(pub.body.acceptance).toMatchObject({ enabled: true, state: 'ACCEPTED', acceptedBy: 'Maria da Silva' })
         expect(JSON.stringify(pub.body.acceptance)).not.toContain('example.com')
+        expect(pub.body.acceptance.accepted).toEqual({
+            packageName: 'Pacote 1',
+            optionals: ['Relatório extra'],
+            totalCents: 135000,
+            contentHash: res.body.response.contentHash
+        })
+        expect(JSON.stringify(pub.body.acceptance)).not.toContain('123.456')
     })
 
     it('segundo aceite → 409; respostas simultâneas: só uma vence', async () => {
