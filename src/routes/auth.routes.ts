@@ -194,7 +194,7 @@ authRouter.post('/google', authRateLimit, async (req, res) => {
             }
         }
         const token = signAccessToken({ userId: user.id, role: user.role })
-        return res.json({ token, user: await buildSessionUser(user.id), created: false })
+        return res.json({ token, user: await buildSessionUser(user.id), created: false, joinedWorkspaceId: invite?.workspaceId ?? null })
     }
 
     if (!invite && !workspaceName) {
@@ -224,5 +224,5 @@ authRouter.post('/google', authRateLimit, async (req, res) => {
     })
 
     const token = signAccessToken({ userId: created.id, role: created.role })
-    return res.status(201).json({ token, user: await buildSessionUser(created.id), created: true })
+    return res.status(201).json({ token, user: await buildSessionUser(created.id), created: true, joinedWorkspaceId: invite?.workspaceId ?? null })
 })

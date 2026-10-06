@@ -31,6 +31,7 @@ describe('entrar com Google por convite', () => {
         const invite2 = await request(app).post('/api/workspaces/current/invites').set('Authorization', owner2.auth).send({ email: 'ana@gmail.com', role: 'ADMIN' })
         const joined2 = await google({ credential: cred('token-ana'), inviteToken: invite2.body.inviteUrl.split('/convite/')[1] })
         expect(joined2.status).toBe(200)
+        expect(joined2.body.joinedWorkspaceId).toBe(owner2.workspace.id)
         expect(joined2.body.user.workspaces.map((w: { role: string }) => w.role).sort()).toEqual(['ADMIN', 'MEMBER'])
     })
 })
