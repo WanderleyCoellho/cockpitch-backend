@@ -24,6 +24,7 @@ describe('modelos do sistema', () => {
             const parsed = blocksSchema.safeParse(template.blocks)
             expect(parsed.success, `${template.id}: ${parsed.success ? '' : JSON.stringify(parsed.error.issues)}`).toBe(true)
             expect(template.blocks.some((b) => b.type === 'pricing'), `${template.id} sem bloco de preços`).toBe(true)
+            expect(template.blocks.some((b) => b.type === 'acceptance'), `${template.id} sem bloco de aceite`).toBe(true)
         }
         expect(new Set(SYSTEM_TEMPLATES.map((t) => t.id)).size).toBe(SYSTEM_TEMPLATES.length)
     })

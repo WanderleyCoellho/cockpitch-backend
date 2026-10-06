@@ -21,3 +21,13 @@ export const publicWriteRateLimit = build(60 * 1000, 30)
 
 /** Uploads autenticados: protege disco/banda contra loop de cliente. */
 export const uploadRateLimit = build(60 * 1000, 30)
+
+/** Respostas do cliente (aceite/ajuste/recusa): 5 por hora por IP e por proposta. */
+export const proposalResponseRateLimit = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message,
+    keyGenerator: (req) => `${req.ip}:${req.params.slug ?? ''}`
+})

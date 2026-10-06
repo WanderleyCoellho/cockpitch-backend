@@ -106,6 +106,17 @@ export const blockSchema = z.discriminatedUnion('type', [
     }),
     z.object({
         ...base,
+        type: z.literal('acceptance'),
+        /** Aceite online (spec proposal-online-acceptance): o cliente aceita, pede ajuste ou recusa. */
+        data: z.object({
+            intro: optionalText(1000),
+            allowDecline: z.boolean().default(true),
+            allowChangeRequest: z.boolean().default(true),
+            requireDocument: z.boolean().default(false)
+        })
+    }),
+    z.object({
+        ...base,
         type: z.literal('cta'),
         data: z.object({ headline: text(160), buttonLabel: optionalText(40) })
     })

@@ -42,6 +42,10 @@ const contact = (message: string): ProposalBlock => ({
     id: 'contact', type: 'contact', visible: true, title: 'Vamos conversar?',
     data: { message, showWhatsapp: true, showEmail: true, showInstagram: true }
 })
+const acceptance = (intro = 'Gostou? Escolha o pacote, confira o total e aceite online. Se quiser mudar algo, é só pedir um ajuste.'): ProposalBlock => ({
+    id: 'acceptance', type: 'acceptance', visible: true, title: 'Aceitar proposta',
+    data: { intro, allowDecline: true, allowChangeRequest: true, requireDocument: false }
+})
 const cta = (headline: string, buttonLabel = 'Quero fechar'): ProposalBlock => ({ id: 'cta', type: 'cta', visible: true, title: '', data: { headline, buttonLabel } })
 
 const DEFAULT_TERMS =
@@ -62,6 +66,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             testimonials(),
             faq([['Vocês viajam para outras cidades?', 'Sim. Custos de deslocamento são combinados à parte.'], ['Como recebo o material?', 'Por galeria online privada, com download em alta resolução.']]),
             terms(DEFAULT_TERMS),
+            acceptance(),
             contact('Ficou alguma dúvida? Fale com a gente, vai ser um prazer ajudar.')
         ]
     },
@@ -77,6 +82,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             timeline([['Reserva da data', 'Confirmação com sinal.', 'Hoje'], ['Degustação ou reunião técnica', 'Ajustes finos.', '30 dias antes'], ['Dia do evento', 'Execução completa.', 'Data marcada']]),
             faq([['A data fica reservada?', 'Sim, após a confirmação do sinal.'], ['Posso mudar o número de convidados?', 'Sim, até 15 dias antes, com ajuste no valor.']]),
             terms(DEFAULT_TERMS),
+            acceptance(),
             contact('Vamos tirar seu evento do papel?')
         ]
     },
@@ -91,8 +97,9 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             about('<p>A <strong>{empresa}</strong> une estratégia, criatividade e dados para gerar resultado de verdade.</p>'),
             testimonials(),
             faq([['Existe fidelidade?', 'Contrato mínimo de 3 meses para que a estratégia tenha tempo de gerar resultado.'], ['Quem aprova os conteúdos?', 'Você aprova tudo antes da publicação.']]),
+            cta('Pronto para começar?', 'Quero começar'),
             terms(DEFAULT_TERMS),
-            cta('Pronto para começar?', 'Quero começar')
+            acceptance()
         ]
     },
     {
@@ -105,6 +112,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             { id: 'team', type: 'team', visible: true, title: 'Equipe responsável', data: { members: [{ name: 'Seu nome', role: 'Consultor responsável', bio: 'Breve resumo da experiência relevante para este projeto.' }] } },
             pricing('Honorários conforme o escopo acima.', 'Honorários'),
             terms(DEFAULT_TERMS),
+            acceptance(),
             contact('Fico à disposição para esclarecer qualquer ponto.')
         ]
     },
@@ -118,6 +126,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             gallery('Resultados'),
             faq([['Quantas sessões são necessárias?', 'Depende da avaliação; indicamos o número ideal para o seu caso.'], ['Posso remarcar?', 'Sim, com até 24 horas de antecedência.']]),
             terms(DEFAULT_TERMS),
+            acceptance(),
             contact('Agende sua avaliação ou tire suas dúvidas pelo WhatsApp.')
         ]
     },
@@ -131,6 +140,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             pricing('Valores por etapa ou fechados, conforme indicado.', 'Orçamento'),
             gallery('Obras realizadas'),
             terms('<p><strong>Materiais:</strong> informe se estão inclusos ou não.</p>' + DEFAULT_TERMS),
+            acceptance(),
             contact('Agende uma visita técnica sem compromisso.')
         ]
     },
@@ -145,6 +155,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             testimonials(),
             faq([['Há material de apoio?', 'Sim, entregue a todos os participantes.']]),
             terms(DEFAULT_TERMS),
+            acceptance(),
             contact('Vamos montar a turma ideal para sua equipe.')
         ]
     },
@@ -157,8 +168,9 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             timeline([['Descoberta', 'Requisitos e protótipo navegável.', '2 semanas'], ['Desenvolvimento', 'Sprints com entregas quinzenais.', '6 a 10 semanas'], ['Go-live', 'Publicação e treinamento.', '1 semana']], 'Cronograma'),
             pricing('Investimento do projeto e opcionais de suporte.'),
             faq([['O código fica com quem?', 'Com você, após a quitação do projeto.'], ['Há suporte após a entrega?', 'Sim, 30 dias de garantia inclusos; planos de suporte são opcionais.']]),
+            cta('Vamos construir isso juntos?', 'Aprovar proposta'),
             terms(DEFAULT_TERMS),
-            cta('Vamos construir isso juntos?', 'Aprovar proposta')
+            acceptance()
         ]
     },
     {
@@ -171,6 +183,7 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             pricing('Escolha a opção que faz mais sentido para você.'),
             faq([['Como funciona o pagamento?', 'Explique aqui as formas e prazos de pagamento.']]),
             terms(DEFAULT_TERMS),
+            acceptance(),
             contact('Qualquer dúvida, é só chamar.')
         ]
     }

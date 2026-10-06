@@ -123,12 +123,21 @@ proposalRouter.get('/provider/:providerId', async (req: AuthenticatedRequest, re
             packageIds: {
                 include: { items: true }
             },
-            views: true
+            views: true,
+            _count: { select: { responses: true } },
+            // Última resposta do cliente, para o resumo na lista ("aceita por Fulano em…").
+            responses: { orderBy: { createdAt: 'desc' }, take: 1, select: { type: true, signerName: true, createdAt: true } }
         },
         orderBy: { createdAt: 'desc' }
     })
 
-    return res.json({ proposals: proposals.map(withPricedPackages) })
+    return res.json({
+        proposals: proposals.map(({ responses, _count, ...proposal }) => ({
+            ...withPricedPackages(proposal),
+            responsesCount: _count.responses,
+            lastResponse: responses[0] ?? null
+        }))
+    })
 })
 
 proposalRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
@@ -299,6 +308,29 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     })
 
     return res.json({ proposal: withPricedPackages(updated) })
+})
+
+// Respostas do cliente (aceite/ajuste/recusa), em ordem cronológica.
+proposalRouter.get('/:id/responses', async (req: AuthenticatedRequest, res) => {
+    const proposal = await verifyProposalOwnership(req.auth, req.params.id)
+    if (!proposal) return res.status(404).json({ message: 'Proposal not found' })
+    const responses = await prisma.proposalResponse.findMany({
+        where: { proposalId: proposal.id },
+        orderBy: { createdAt: 'asc' }
+    })
+    return res.json({ responses })
+})
+
+// Reabre uma proposta aceita/encerrada para novas respostas. O histórico continua guardado.
+proposalRouter.post('/:id/reopen', async (req: AuthenticatedRequest, res) => {
+    const proposal = await verifyProposalOwnership(req.auth, req.params.id)
+    if (!proposal) return res.status(404).json({ message: 'Proposal not found' })
+    if (proposal.status === 'ABERTA') return res.status(409).json({ message: 'A proposta já está aberta.', code: 'ALREADY_OPEN' })
+    const updated = await prisma.proposal.update({
+        where: { id: proposal.id },
+        data: { status: 'ABERTA', commercialStatus: 'NEGOCIANDO' }
+    })
+    return res.json({ proposal: { id: updated.id, status: updated.status, commercialStatus: updated.commercialStatus } })
 })
 
 proposalRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {

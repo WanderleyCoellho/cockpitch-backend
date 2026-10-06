@@ -240,9 +240,39 @@ model Proposal {
   updatedAt          DateTime         @updatedAt
   packageIds         Package[]        @relation("ProposalPackages")
   views              ProposalView[]
+  responses          ProposalResponse[]
 
   @@index([providerId])
   @@index([slug])
+}
+
+/// Resposta do cliente na página pública (spec proposal-online-acceptance). Evidência imutável.
+model ProposalResponse {
+  id             String               @id @default(cuid())
+  proposalId     String
+  proposal       Proposal             @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  type           ProposalResponseType
+  signerName     String
+  signerEmail    String
+  signerDocument String?
+  message        String?
+  /// Pacote e opcionais escolhidos, com nomes e valores no momento da resposta.
+  selection      Json?
+  /// Total calculado no servidor no momento da resposta (centavos).
+  totalCents     Int?
+  /// SHA-256 do conteúdo exibido (blocos + pacotes) + seleção.
+  contentHash    String
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime             @default(now())
+
+  @@index([proposalId, createdAt])
+}
+
+enum ProposalResponseType {
+  ACCEPTED
+  DECLINED
+  CHANGE_REQUESTED
 }
 
 model ProposalView {

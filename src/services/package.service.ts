@@ -10,7 +10,7 @@ export function serializeItem(item: PackageItem) {
     return { ...item, quantity: Number(item.quantity) }
 }
 
-function toPricingInput(pkg: PackageWithItems): PricingPackage {
+export function toPricingInput(pkg: PackageWithItems): PricingPackage {
     return {
         priceMode: pkg.priceMode,
         fixedPriceCents: pkg.fixedPriceCents,
