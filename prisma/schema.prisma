@@ -14,6 +14,8 @@ model User {
   passwordHash         String?
   /// Identificador da conta Google (claim "sub"), quando vinculada.
   googleSub            String?           @unique
+  /// Guia de primeiros passos: tours vistos, checklist oculto, link compartilhado (spec in-app-guidance).
+  onboarding           Json?
   name                 String
   role                 UserRole          @default(PROVIDER)
   planTier             PlanTier          @default(FREE)

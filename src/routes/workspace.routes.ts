@@ -9,6 +9,7 @@ import { resolveEntitlements } from '../services/entitlements.js'
 import { createInvite, getWorkspaceUsage, listUserWorkspaces } from '../services/workspace.service.js'
 import { kickEmailDispatch } from '../services/email/outbox.js'
 import { notifyTeamInvite } from '../services/notifications.service.js'
+import { getOnboarding } from '../services/onboarding.service.js'
 
 const segmentSchema = z.enum([
     'PHOTO_VIDEO', 'EVENTS', 'AGENCY', 'CONSULTING', 'HEALTH_BEAUTY', 'CONSTRUCTION', 'EDUCATION', 'TECH', 'GENERAL'
@@ -136,6 +137,11 @@ workspaceRouter.post('/current/invites', requireRole('ADMIN'), async (req: Authe
 const notificationPrefsSchema = z
     .object({ notifyOnOpen: z.boolean().optional(), notifyOnResponse: z.boolean().optional() })
     .refine((body) => body.notifyOnOpen !== undefined || body.notifyOnResponse !== undefined, { message: 'Nada para alterar' })
+
+// Primeiros passos desta pessoa nesta empresa (checklist do painel e tours).
+workspaceRouter.get('/current/onboarding', async (req: AuthenticatedRequest, res) => {
+    return res.json(await getOnboarding(req.auth!.userId, workspaceIdOf(req.auth)))
+})
 
 // Preferências de e-mail da pessoa logada nesta empresa (qualquer papel).
 workspaceRouter.get('/current/notifications', async (req: AuthenticatedRequest, res) => {

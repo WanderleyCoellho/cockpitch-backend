@@ -6,6 +6,7 @@ import { signAccessToken } from '../lib/jwt.js'
 import { HttpError } from '../lib/httpError.js'
 import { env } from '../config/env.js'
 import { verifyGoogleIdToken } from '../lib/googleIdToken.js'
+import { onboardingPatchSchema, updateOnboardingPrefs } from '../services/onboarding.service.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { authRateLimit } from '../middlewares/rateLimit.js'
 import { acceptInvite, createWorkspaceWithOwner, findValidInvite, listUserWorkspaces } from '../services/workspace.service.js'
@@ -225,4 +226,11 @@ authRouter.post('/google', authRateLimit, async (req, res) => {
 
     const token = signAccessToken({ userId: created.id, role: created.role })
     return res.status(201).json({ token, user: await buildSessionUser(created.id), created: true, joinedWorkspaceId: invite?.workspaceId ?? null })
+})
+
+// Guia de primeiros passos: marca tour visto, oculta o checklist, registra link compartilhado.
+authRouter.patch('/me/onboarding', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const parsed = onboardingPatchSchema.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
+    return res.json({ onboarding: await updateOnboardingPrefs(req.auth!.userId, parsed.data) })
 })
