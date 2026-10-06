@@ -19,8 +19,9 @@
 5. **Proposta em blocos + modelos por segmento** — `specs/architecture/003-proposal-blocks.md` — Depende de: 3, 4 (bloco `pricing`). — ✅ concluído em 2026-10-06 (backend + página pública + editor com modelos e pré-visualização).
 6. **Ajuda contextual + onboarding + central de ajuda** — `specs/in-app-guidance.md` — Depende de: 1. Os componentes base podem ser feitos em paralelo com 3–5 e aplicados a cada tela refeita. — 🟡 base pronta (`HelpTip`, `FieldLabel`, catálogo `src/shared/help/content.ts`, teste de chaves) e aplicada em cadastro e equipe; faltam checklist, tour e /ajuda.
 7. **Aceite online** — `specs/proposal-online-acceptance.md` — Depende de: 5. — ✅ concluído em 2026-10-06 (bloco de aceite, evidência com hash, aba Respostas e reabrir).
-8. **Notificações por e-mail** — `specs/email-notifications.md` — Depende de: 3, 7 — domínio `mail.lumendevstudios.com` em verificação no Resend; precisa de `RESEND_API_KEY` no Railway (funciona em modo console sem isso).
-9. **Exportar PDF (impressão)** — `specs/pdf-export.md` — Depende de: 5.
+8. **Notificações por e-mail** — `specs/email-notifications.md` — Depende de: 3, 7 — ✅ concluído em 2026-10-07 (fila com novas tentativas, avisos de abertura/respostas, confirmação ao cliente, convites, preferências).
+9. **Entrar e cadastrar com Google** — `specs/google-sign-in.md` — Depende de: 3 — ✅ concluído em 2026-10-07 (falta o Client ID no Railway para ligar).
+10. **Exportar PDF (impressão)** — `specs/pdf-export.md` — Depende de: 5.
 
 ---
 _Gerado em 2026-10-05 a partir de: process/001, architecture/001–003, priced-line-items,

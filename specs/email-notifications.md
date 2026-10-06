@@ -36,3 +36,16 @@ saem por e-mail.
 
 ## Variáveis
 `RESEND_API_KEY`, `MAIL_FROM` (ex.: `Lumen Deal <propostas@seudominio.com>`), `APP_PUBLIC_URL`.
+
+---
+_Changelog: 2026-10-07 — implementado. `EmailOutbox` gravada na transação do evento (`createMany ... skipDuplicates`
+pelo `dedupeKey`), reserva atômica do lote (`UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)`, com
+"reserva" de 5 min contra envio duplo), novas tentativas em 1/5/15/60 min e `FAILED` na 5ª falha, até 50 por execução,
+job a cada minuto + disparo ~1 s depois de cada evento. Eventos: primeira abertura (uma vez por proposta e pessoa),
+aceite/ajuste/recusa (reply-to = e-mail do cliente), confirmação de aceite ao cliente (reply-to = e-mail da empresa)
+e convite de equipe. Preferências por pessoa e empresa (`GET/PATCH /api/workspaces/current/notifications`, tela Equipe).
+Aberturas da própria equipe (token válido de membro no pedido) não contam nem avisam.
+Assumido: envio pela API HTTP do Resend com `fetch` (timeout 10 s), sem o SDK `resend` — uma chamada só, menos dependência.
+Assumido: o link de PDF no e-mail de confirmação fica para a etapa de PDF; hoje o e-mail leva à página da proposta.
+Variáveis: `RESEND_API_KEY` (já no Railway), `MAIL_FROM` (padrão `Lumen Deal <notificacoes@mail.lumendevstudios.com>`),
+os links usam `FRONTEND_URL`._
