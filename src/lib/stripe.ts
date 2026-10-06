@@ -149,7 +149,8 @@ export function ensurePortalConfiguration(): Promise<string> {
         portalConfigPromise = (async () => {
             const stripe = getStripe()
             const prices = await ensureCatalogPrices()
-            const version = TIERS.map((tier) => prices[tier].priceId).join(',')
+            // Mudou algo na configuração abaixo? Troque o sufixo para criar uma configuração nova.
+            const version = `${TIERS.map((tier) => prices[tier].priceId).join(',')}|v2`
 
             const configs = await stripe.billingPortal.configurations.list({ active: true, limit: 100 })
             const found = configs.data.find((c) => c.metadata?.app === 'lumen-deal' && c.metadata?.version === version)
@@ -176,7 +177,8 @@ export function ensurePortalConfiguration(): Promise<string> {
                     subscription_update: {
                         enabled: true,
                         default_allowed_updates: ['price'],
-                        proration_behavior: 'create_prorations',
+                        // Upgrade cobra a diferença na hora (downgrade vira crédito para as próximas faturas).
+                        proration_behavior: 'always_invoice',
                         products: TIERS.map((tier) => ({ product: prices[tier].productId, prices: [prices[tier].priceId] }))
                     }
                 },

@@ -89,6 +89,8 @@ describe('checkout e portal', () => {
         })
         // Configuração do portal permite trocar entre os três planos.
         expect(fake.portalConfigs[0].features.subscription_update.products).toHaveLength(3)
+        // Upgrade cobra a diferença na hora.
+        expect(fake.portalConfigs[0].features.subscription_update.proration_behavior).toBe('always_invoice')
     })
 
     it('portal exige cliente Stripe e é só do dono; cortesia não abre checkout', async () => {

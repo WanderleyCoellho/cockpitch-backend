@@ -17,7 +17,8 @@ assinatura do Stripe, com o plano vivendo no **workspace** e sem configuração 
   `incomplete`/cancelada → FREE. Preço desconhecido preserva o plano atual. Cortesia nunca é alterada.
   Clientes do Stripe que não são de nenhum workspace (outros negócios na mesma conta) são ignorados.
 - **Sem assinatura dupla:** quem já assina e escolhe outro plano vai ao portal do cliente com a troca
-  pré-preenchida (`subscription_update_confirm`, com prorrateio).
+  pré-preenchida (`subscription_update_confirm`). Prorrateio `always_invoice`: no upgrade a diferença é cobrada
+  na hora (não fica para a próxima fatura); no downgrade vira crédito.
 - **Portal do cliente** (`POST /api/stripe/portal`): cartão, faturas, dados fiscais, troca de plano e cancelamento
   no fim do período. A configuração do portal é criada pela API.
 - **Checkout** coleta endereço e CPF/CNPJ (`tax_id_collection`) para a nota fiscal; idioma pt-BR; cupons liberados.
