@@ -35,3 +35,16 @@ e marca "Li e concordo com as condições". O sistema registra a evidência e mu
 - Segundo aceite → 409. Proposta vencida → 409.
 - Payload sem `agreeTerms=true` → 400.
 - O painel lista as respostas em ordem cronológica com IP e data.
+
+---
+_Changelog: 2026-10-06 — implementado (backend + página pública + painel). `ProposalResponse` com seleção, total
+recalculado no servidor (o valor enviado pelo navegador é ignorado), `contentHash` SHA-256 de blocos + pacotes + seleção
+(serialização com chaves ordenadas), IP e user agent. Rate limit 5/h por IP e proposta. Corrida resolvida no
+`UPDATE ... WHERE status='ABERTA'` (teste com 3 aceites simultâneos). Painel: aba "Respostas", "Reabrir" (volta para
+ABERTA/NEGOCIANDO, histórico mantido), aviso ao editar proposta aceita e selo da última resposta na lista.
+Assumido: o aceite é habilitado pelo bloco `acceptance` (opções: pedir ajuste, recusar, exigir CPF/CNPJ); sem esse bloco
+visível a rota responde 409 `NOT_ENABLED` — propostas no layout legado não recebem aceite até serem convertidas.
+Todos os modelos do sistema e o conversor de propostas legadas já incluem o bloco.
+Assumido: recusa e pedido de ajuste mudam só o `commercialStatus` e mantêm a proposta aberta (o cliente ainda pode aceitar).
+Assumido: até a etapa de PDF, a tela de confirmação oferece "Imprimir ou salvar em PDF" pelo navegador (estilos de impressão básicos).
+Pendente (etapa de e-mail): avisar a empresa e o cliente a cada resposta._
