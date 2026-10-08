@@ -34,5 +34,7 @@ mediaRouter.get('/*key', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
     res.setHeader('X-Content-Type-Options', 'nosniff')
+    // Aberto direto no navegador, nenhum arquivo de mídia (ex.: SVG) consegue rodar script.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox")
     return res.sendFile(filePath)
 })

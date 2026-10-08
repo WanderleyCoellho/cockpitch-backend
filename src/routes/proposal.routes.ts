@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
+import { generatedProposalSlug, PUBLIC_SLUG_RE } from '../lib/slug.js'
+import { resolveEntitlements } from '../services/entitlements.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 import { assertCanCreateProposal } from '../services/workspace.service.js'
@@ -20,22 +22,26 @@ const mediaItemSchema = z.object({
     type: z.enum(['image', 'video'])
 })
 
-/** Formulários enviam "" para campo não preenchido; tratamos como ausente em vez de recusar a proposta. */
-const emptyAsUndefined = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((value) => (value === '' ? undefined : value), schema)
+/**
+ * Campo opcional vindo do painel: "" (campo limpo) e null (valor vazio que veio do banco) viram null,
+ * o que apaga o valor ao editar em vez de recusar a proposta inteira.
+ */
+const emptyAsNull = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((value) => (value === '' ? null : value), schema.nullable().optional())
 
 const createProposalSchema = z.object({
     providerId: z.string().cuid(),
     packageIds: z.array(z.string().cuid()).default([]),
     clientName: z.string().min(2),
-    slug: z.string().min(3),
-    serviceDate: emptyAsUndefined(z.string().max(40).optional()),
+    // Formato validado na rota (o link só é livre nos planos com link personalizado).
+    slug: z.string().trim().toLowerCase().max(80).optional(),
+    serviceDate: emptyAsNull(z.string().max(40)),
     validityDays: z.number().int().min(1).default(30),
     status: z.enum(['ABERTA', 'FECHADA', 'EXPIRADA', 'ARQUIVADA']).default('ABERTA'),
     commercialStatus: z
         .enum(['SEM_RESPOSTA', 'NEGOCIANDO', 'ACEITA', 'NEGADA', 'PERSONALIZADO'])
         .default('SEM_RESPOSTA'),
-    heroVideoUrl: emptyAsUndefined(z.string().url().optional()),
-    weddingPhotoUrl: emptyAsUndefined(z.string().url().optional()),
+    heroVideoUrl: emptyAsNull(z.string().url()),
+    weddingPhotoUrl: emptyAsNull(z.string().url()),
     theme: z.string().optional(),
     themeCustom: z.record(z.string(), z.any()).nullable().optional(),
     sections: z.array(z.any()).nullable().optional(),
@@ -55,6 +61,10 @@ const updateProposalSchema = createProposalSchema.partial().refine(
 )
 
 export const proposalRouter = Router()
+
+async function workspaceEntitlements(workspaceId: string) {
+    return resolveEntitlements(await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }))
+}
 
 function toNullableJsonInput(value: unknown) {
     if (value === undefined) return undefined
@@ -205,6 +215,16 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
     // Limite mensal do plano (402 PLAN_LIMIT → o painel oferece upgrade).
     await assertCanCreateProposal(workspaceIdOf(auth))
 
+    // Link público: personalizado nos planos Profissional/Equipe; nos demais, gerado pelo sistema.
+    const { customSlug } = await workspaceEntitlements(workspaceIdOf(auth))
+    let slug = generatedProposalSlug(parsed.data.clientName)
+    if (customSlug && parsed.data.slug) {
+        if (!PUBLIC_SLUG_RE.test(parsed.data.slug)) {
+            return res.status(400).json({ message: 'Link inválido: use letras minúsculas, números e hífen (3 a 80).', code: 'INVALID_SLUG' })
+        }
+        slug = parsed.data.slug
+    }
+
     // Modelo: copia os blocos (cópia, não vínculo — editar o modelo depois não muda propostas já enviadas).
     const template = parsed.data.templateId ? await resolveTemplate(parsed.data.templateId, workspaceIdOf(auth)) : null
     if (parsed.data.templateId && !template) {
@@ -216,7 +236,7 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
         data: {
             providerId: parsed.data.providerId,
             clientName: parsed.data.clientName,
-            slug: parsed.data.slug,
+            slug,
             serviceDate: parsed.data.serviceDate,
             validityDays: parsed.data.validityDays,
             status: parsed.data.status,
@@ -277,6 +297,17 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     }
 
     const { packageIds, providerId: _providerId, templateId: _templateId, ...data } = parsed.data
+
+    if (data.slug !== undefined && data.slug !== proposal.slug) {
+        if (!(await workspaceEntitlements(workspaceIdOf(auth))).customSlug) {
+            return res.status(402).json({ message: 'Escolher o link da proposta é um recurso dos planos Profissional e Equipe.', code: 'PLAN_LIMIT' })
+        }
+        if (!PUBLIC_SLUG_RE.test(data.slug)) {
+            return res.status(400).json({ message: 'Link inválido: use letras minúsculas, números e hífen (3 a 80).', code: 'INVALID_SLUG' })
+        }
+    } else {
+        delete data.slug
+    }
 
     if (packageIds && !(await packagesBelongToProvider(packageIds, proposal.providerId))) {
         return res.status(403).json({ message: 'One or more packages do not belong to this provider' })
@@ -349,4 +380,13 @@ proposalRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
     await prisma.proposal.delete({ where: { id } })
 
     return res.status(204).send()
+})
+
+// Link copiado/compartilhado pelo painel: a proposta passa a contar como "enviada" no Analytics.
+proposalRouter.post('/:id/shared', async (req: AuthenticatedRequest, res) => {
+    const proposal = await verifyProposalOwnership(req.auth!, req.params.id)
+    if (!proposal) return res.status(404).json({ message: 'Proposal not found' })
+    const sharedAt = proposal.sharedAt ?? new Date()
+    if (!proposal.sharedAt) await prisma.proposal.update({ where: { id: proposal.id }, data: { sharedAt } })
+    return res.json({ sharedAt })
 })

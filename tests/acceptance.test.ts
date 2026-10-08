@@ -64,11 +64,13 @@ describe('marca na página pública', () => {
     it('Grátis mostra "Feito com Lumen Deal"; planos pagos removem; o plano não é exposto', async () => {
         const free = await createUser('Grátis', { planTier: 'FREE', billingStatus: 'ACTIVE' })
         const pro = await createUser('Pro', { planTier: 'PRO', billingStatus: 'ACTIVE' })
+        const slugs: string[] = []
         for (const [u, slug] of [[free, 'marca-gratis'], [pro, 'marca-pro']] as const) {
-            await request(app).post('/api/proposals').set('Authorization', u.auth).send({ providerId: u.provider.id, clientName: 'Cliente', slug })
+            const created = await request(app).post('/api/proposals').set('Authorization', u.auth).send({ providerId: u.provider.id, clientName: 'Cliente', slug })
+            slugs.push(created.body.proposal.slug)
         }
-        const a = await request(app).get('/api/public/proposals/marca-gratis')
-        const b = await request(app).get('/api/public/proposals/marca-pro')
+        const a = await request(app).get(`/api/public/proposals/${slugs[0]}`)
+        const b = await request(app).get(`/api/public/proposals/${slugs[1]}`)
         expect(a.body.branding).toEqual({ removeBranding: false })
         expect(b.body.branding).toEqual({ removeBranding: true })
         expect(JSON.stringify(b.body)).not.toContain('planTier')

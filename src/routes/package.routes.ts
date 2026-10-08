@@ -4,12 +4,14 @@ import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 import { LIMITS } from '../services/pricing.js'
+import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
 import { legacyPriceToFields, refreshPackagePrice, serializePackage } from '../services/package.service.js'
 
 const createPackageSchema = z.object({
     providerId: z.string().cuid(),
     name: z.string().trim().min(2).max(120),
-    description: z.string().max(2000).optional(),
+    // null limpa o campo (o painel reenvia o que veio do banco ao editar).
+    description: z.string().max(2000).nullable().optional(),
     /** Legado: preço em texto. Preferir priceMode + fixedPriceCents. */
     price: z.string().max(60).optional(),
     priceMode: z.enum(['SUM_OF_ITEMS', 'FIXED', 'ON_REQUEST']).optional(),
@@ -19,10 +21,10 @@ const createPackageSchema = z.object({
     priceLabel: z.string().trim().max(60).nullable().optional(),
     order: z.number().int().min(0).max(10_000).optional(),
     isHighlighted: z.boolean().default(false),
-    highlightLabel: z.string().optional(),
-    highlightColor: z.string().optional(),
-    mediaUrl: z.string().optional(),
-    mediaType: z.string().optional()
+    highlightLabel: z.string().max(60).nullable().optional(),
+    highlightColor: z.string().max(30).nullable().optional(),
+    mediaUrl: z.string().max(2000).nullable().optional(),
+    mediaType: z.string().max(20).nullable().optional()
 })
 
 const percentWithinLimit = (body: { discountType?: string; discountValue?: number }) =>
@@ -120,6 +122,10 @@ packageRouter.post('/', requireRole('ADMIN'), async (req: AuthenticatedRequest, 
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
+    if (parsed.data.mediaUrl && !isTrustedUploadUrl(parsed.data.mediaUrl, req)) {
+        return res.status(400).json({ message: 'Use uma imagem ou vídeo enviado pelo Lumen Deal.', code: 'UNTRUSTED_MEDIA' })
+    }
+
     const provider = await verifyProviderOwnership(auth, parsed.data.providerId)
     if (!provider) {
         return res.status(403).json({ message: 'Access denied' })
@@ -149,6 +155,7 @@ packageRouter.patch('/:id', requireRole('ADMIN'), async (req: AuthenticatedReque
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
+
     const pkg = await prisma.package.findFirst({
         where: {
             id,
@@ -157,6 +164,10 @@ packageRouter.patch('/:id', requireRole('ADMIN'), async (req: AuthenticatedReque
             }
         }
     })
+    // Mídia nova precisa ser enviada pelo Lumen Deal; a que já estava salva (legado) continua aceita.
+    if (pkg && parsed.data.mediaUrl && parsed.data.mediaUrl !== pkg.mediaUrl && !isTrustedUploadUrl(parsed.data.mediaUrl, req)) {
+        return res.status(400).json({ message: 'Use uma imagem ou vídeo enviado pelo Lumen Deal.', code: 'UNTRUSTED_MEDIA' })
+    }
 
     if (!pkg) {
         return res.status(404).json({ message: 'Package not found' })

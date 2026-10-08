@@ -91,3 +91,19 @@ describe('pacotes com preço calculado', () => {
         expect(publicPkg.pricing.totalCents).toBe(15000)
     })
 })
+
+describe('editar pacote', () => {
+    it('salva de novo com campos vazios (null) e recusa mídia de fora', async () => {
+        const a = await createUser('Ana')
+        const created = await request(app).post('/api/packages').set('Authorization', a.auth).send({ providerId: a.provider.id, name: 'Básico', priceMode: 'FIXED', fixedPriceCents: 1000 })
+        const id = created.body.package.id
+        const body = { name: 'Básico 2', description: null, highlightLabel: null, highlightColor: null, mediaUrl: null, mediaType: null, priceLabel: null }
+        const first = await request(app).patch(`/api/packages/${id}`).set('Authorization', a.auth).send(body)
+        const second = await request(app).patch(`/api/packages/${id}`).set('Authorization', a.auth).send({ ...body, name: 'Básico 3' })
+        expect(first.status).toBe(200)
+        expect(second.status).toBe(200)
+        expect(second.body.package.name).toBe('Básico 3')
+        const external = await request(app).patch(`/api/packages/${id}`).set('Authorization', a.auth).send({ mediaUrl: 'https://outro-site.com/x.jpg', mediaType: 'image' })
+        expect(external.status).toBe(400)
+    })
+})

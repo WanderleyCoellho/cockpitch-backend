@@ -288,6 +288,8 @@ model Proposal {
   blocksVersion      Int                @default(1)
   /// Modelo usado na criação (sys-* do sistema ou id de ProposalTemplate).
   templateId         String?
+  /// Quando o link foi copiado/compartilhado pelo painel (conta como "enviada" no Analytics).
+  sharedAt           DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   packageIds         Package[]          @relation("ProposalPackages")

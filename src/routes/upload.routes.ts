@@ -7,6 +7,7 @@ import { uploadRateLimit } from '../middlewares/rateLimit.js'
 import { buildObjectKey, getStorage } from '../lib/storage/index.js'
 import { publicApiOrigin } from '../lib/publicUrl.js'
 import { removeTempFile, tempDiskStorage } from '../lib/tempUploads.js'
+import { MAX_SVG_BYTES, svgProblem } from '../lib/svg.js'
 
 const MAX_FILE_SIZE_MB = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB ?? '100')
 const MAX_FILE_SIZE_BYTES = Math.max(5, MAX_FILE_SIZE_MB) * 1024 * 1024
@@ -17,6 +18,7 @@ const EXTENSION_BY_MIME: Record<string, string> = {
     'image/webp': '.webp',
     'image/gif': '.gif',
     'image/avif': '.avif',
+    'image/svg+xml': '.svg',
     'video/mp4': '.mp4',
     'video/webm': '.webm',
     'video/quicktime': '.mov',
@@ -72,8 +74,20 @@ uploadRouter.post('/upload', requireAuth, uploadRateLimit, (req: Request, res: R
             }
 
             // A extensão e o Content-Type gravados vêm da assinatura real do arquivo, não do que o cliente declarou.
-            const detected = await fileTypeFromFile(req.file.path)
-            if (!detected || !isCompatibleMime(req.file.mimetype, detected.mime)) {
+            let detected: { mime: string; ext: string } | undefined = await fileTypeFromFile(req.file.path)
+            const declaredSvg = req.file.mimetype === 'image/svg+xml' || /\.svg$/i.test(req.file.originalname)
+            // file-type não reconhece SVG (ou o vê como XML genérico).
+            const svgCandidate = declaredSvg && (!detected || detected.mime === 'application/xml')
+            if (svgCandidate) {
+                // SVG não tem assinatura binária: valida o conteúdo (logo sem script nem links externos).
+                if (req.file.size > MAX_SVG_BYTES) {
+                    return res.status(400).json({ message: 'SVG muito grande (máximo 2 MB).' })
+                }
+                const problem = svgProblem(await fs.promises.readFile(req.file.path, 'utf8'))
+                if (problem) return res.status(400).json({ message: problem, code: 'UNSAFE_SVG' })
+                detected = { mime: 'image/svg+xml', ext: 'svg' }
+            }
+            if (!detected || (!svgCandidate && !isCompatibleMime(req.file.mimetype, detected.mime))) {
                 return res.status(400).json({
                     message: 'File signature does not match declared media type',
                     declaredMime: req.file.mimetype,

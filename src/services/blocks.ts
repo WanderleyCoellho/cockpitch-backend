@@ -63,7 +63,9 @@ export const blockSchema = z.discriminatedUnion('type', [
         ...base,
         type: z.literal('timeline'),
         data: z.object({
-            steps: z.array(z.object({ title: text(160), description: optionalText(600), duration: optionalText(60) })).max(30)
+            steps: z.array(z.object({ title: text(160), description: optionalText(600), duration: optionalText(60) })).max(30),
+            /** Imagem de fundo opcional do cronograma (escurecida para o texto ficar legível). */
+            backgroundUrl: mediaUrl.optional()
         })
     }),
     z.object({
@@ -144,6 +146,9 @@ export function collectMediaUrls(blocks: ProposalBlock[]): string[] {
                 break
             case 'gallery':
                 urls.push(...block.data.items.map((item) => item.url))
+                break
+            case 'timeline':
+                if (block.data.backgroundUrl) urls.push(block.data.backgroundUrl)
                 break
             case 'testimonials':
                 block.data.items.forEach((item) => item.photoUrl && urls.push(item.photoUrl))

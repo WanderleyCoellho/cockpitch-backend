@@ -11,6 +11,8 @@ export type Entitlements = {
     members: number
     storageGb: number
     removeBranding: boolean
+    /** Escolher o link público da proposta (/p/seu-link). Sem isso o link é gerado pelo sistema. */
+    customSlug: boolean
     customTemplates: boolean
     emailNotifications: boolean
     analytics: boolean
@@ -18,10 +20,10 @@ export type Entitlements = {
 
 const LIMITS: Record<PlanTier, Omit<Entitlements, 'tier' | 'effectiveTier' | 'isCourtesy'>> = {
     // Grátis inclui aceite online, PDF e avisos por e-mail (decisão de produto 2026-10-07): limita por volume e marca.
-    FREE: { proposalsPerMonth: 3, members: 1, storageGb: 0.5, removeBranding: false, customTemplates: false, emailNotifications: true, analytics: false },
-    STARTER: { proposalsPerMonth: 30, members: 1, storageGb: 5, removeBranding: true, customTemplates: false, emailNotifications: true, analytics: true },
-    PRO: { proposalsPerMonth: -1, members: 3, storageGb: 20, removeBranding: true, customTemplates: true, emailNotifications: true, analytics: true },
-    AGENCY: { proposalsPerMonth: -1, members: 10, storageGb: 100, removeBranding: true, customTemplates: true, emailNotifications: true, analytics: true }
+    FREE: { proposalsPerMonth: 3, members: 1, storageGb: 0.5, removeBranding: false, customSlug: false, customTemplates: false, emailNotifications: true, analytics: false },
+    STARTER: { proposalsPerMonth: 30, members: 1, storageGb: 5, removeBranding: true, customSlug: false, customTemplates: false, emailNotifications: true, analytics: true },
+    PRO: { proposalsPerMonth: -1, members: 3, storageGb: 20, removeBranding: true, customSlug: true, customTemplates: true, emailNotifications: true, analytics: true },
+    AGENCY: { proposalsPerMonth: -1, members: 10, storageGb: 100, removeBranding: true, customSlug: true, customTemplates: true, emailNotifications: true, analytics: true }
 }
 
 export function resolveEntitlements(workspace: {
