@@ -16,6 +16,7 @@ import { opsAuthRouter } from './ops-auth.routes.js'
 import { workspaceRouter } from './workspace.routes.js'
 import { inviteRouter } from './invite.routes.js'
 import { templateRouter } from './template.routes.js'
+import { blockLibraryRouter } from './block-library.routes.js'
 
 export const apiRouter = Router()
 
@@ -24,6 +25,7 @@ apiRouter.use('/ops-auth', opsAuthRouter)
 apiRouter.use('/workspaces', workspaceRouter)
 apiRouter.use('/invites', inviteRouter)
 apiRouter.use('/templates', templateRouter)
+apiRouter.use('/block-library', blockLibraryRouter)
 apiRouter.use('/providers', providerRouter)
 apiRouter.use('/packages', packageRouter)
 apiRouter.use('/package-items', packageItemRouter)

@@ -41,7 +41,16 @@ describe('POST /api/proposals', () => {
         expect((await request(app).post('/api/proposals').set('Authorization', a.auth).send(body)).status).toBe(201)
         const dup = await request(app).post('/api/proposals').set('Authorization', a.auth).send(body)
         expect(dup.status).toBe(409)
-        expect(dup.body.code).toBe('CONFLICT')
+        expect(dup.body.code).toBe('SLUG_TAKEN')
+        expect(dup.body.suggestion).toBe('mesmo-slug-2')
+        expect(dup.body.message).toContain('/p/mesmo-slug-2')
+
+        // Link de outra empresa também conta (o link é público); trocar para um link em uso idem.
+        const b = await createUser('Outra')
+        const other = await request(app).post('/api/proposals').set('Authorization', b.auth).send({ providerId: b.provider.id, clientName: 'Cliente', slug: 'link-b' })
+        const change = await request(app).patch(`/api/proposals/${other.body.proposal.id}`).set('Authorization', b.auth).send({ slug: 'mesmo-slug' })
+        expect(change.status).toBe(409)
+        expect(change.body.code).toBe('SLUG_TAKEN')
 
         const health = await request(app).get('/api/health')
         expect(health.status).toBe(200)

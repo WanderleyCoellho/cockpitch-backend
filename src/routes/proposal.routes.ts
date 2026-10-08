@@ -60,6 +60,25 @@ const updateProposalSchema = createProposalSchema.partial().refine(
     { message: 'At least one field is required' }
 )
 
+/**
+ * Link personalizado já usado por outra proposta (de qualquer empresa, o link é público):
+ * 409 com uma sugestão livre, em vez do erro genérico de registro duplicado.
+ */
+async function slugTaken(slug: string, exceptId?: string) {
+    const exists = await prisma.proposal.findFirst({ where: { slug, ...(exceptId ? { NOT: { id: exceptId } } : {}) }, select: { id: true } })
+    if (!exists) return null
+    const base = slug.slice(0, 76).replace(/-+$/, '')
+    let suggestion = generatedProposalSlug(base)
+    for (let n = 2; n <= 20; n++) {
+        const candidate = `${base}-${n}`
+        if (!(await prisma.proposal.findFirst({ where: { slug: candidate }, select: { id: true } }))) {
+            suggestion = candidate
+            break
+        }
+    }
+    return { message: `O link /p/${slug} já está em uso. Que tal /p/${suggestion}?`, code: 'SLUG_TAKEN', suggestion }
+}
+
 export const proposalRouter = Router()
 
 async function workspaceEntitlements(workspaceId: string) {
@@ -223,6 +242,8 @@ proposalRouter.post('/', async (req: AuthenticatedRequest, res) => {
             return res.status(400).json({ message: 'Link inválido: use letras minúsculas, números e hífen (3 a 80).', code: 'INVALID_SLUG' })
         }
         slug = parsed.data.slug
+        const taken = await slugTaken(slug)
+        if (taken) return res.status(409).json(taken)
     }
 
     // Modelo: copia os blocos (cópia, não vínculo — editar o modelo depois não muda propostas já enviadas).
@@ -305,6 +326,8 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
         if (!PUBLIC_SLUG_RE.test(data.slug)) {
             return res.status(400).json({ message: 'Link inválido: use letras minúsculas, números e hífen (3 a 80).', code: 'INVALID_SLUG' })
         }
+        const taken = await slugTaken(data.slug, proposal.id)
+        if (taken) return res.status(409).json(taken)
     } else {
         delete data.slug
     }

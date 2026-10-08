@@ -58,6 +58,7 @@ model Workspace {
   invites              WorkspaceInvite[]
   providers            Provider[]
   templates            ProposalTemplate[]
+  savedBlocks          SavedBlock[]
 }
 
 /// Histórico de cobrança e licença da empresa (painel Ops).
@@ -116,6 +117,20 @@ model ProposalTemplate {
   updatedAt   DateTime         @updatedAt
 
   @@index([workspaceId])
+}
+
+/// Bloco salvo na biblioteca da empresa (Profissional/Equipe), compartilhado com a equipe.
+model SavedBlock {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  type        String
+  block       Json
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
 }
 
 model WorkspaceMember {
