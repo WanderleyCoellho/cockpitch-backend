@@ -28,6 +28,18 @@ describe('modelos do sistema', () => {
         }
         expect(new Set(SYSTEM_TEMPLATES.map((t) => t.id)).size).toBe(SYSTEM_TEMPLATES.length)
     })
+
+    it('modelos mostram valor antes do preço e não usam marcadores nos títulos', () => {
+        for (const template of SYSTEM_TEMPLATES) {
+            const types = template.blocks.map((b) => b.type)
+            expect(types[0], `${template.id} começa pela capa`).toBe('cover')
+            const pricingAt = types.indexOf('pricing')
+            expect(types.indexOf('scope') === -1 || types.indexOf('scope') < pricingAt, `${template.id}: escopo antes do preço`).toBe(true)
+            for (const block of template.blocks) expect(block.title, `${template.id}/${block.id}`).not.toMatch(/\{(cliente|empresa)\}/)
+        }
+        // Mais de um modelo por segmento: o cliente escolhe o estilo.
+        expect(SYSTEM_TEMPLATES.filter((t) => t.segment === 'HEALTH_BEAUTY').length).toBeGreaterThanOrEqual(3)
+    })
 })
 
 describe('proposta em blocos', () => {

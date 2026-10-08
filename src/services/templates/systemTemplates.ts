@@ -2,8 +2,12 @@ import type { WorkspaceSegment } from '@prisma/client'
 import type { ProposalBlock } from '../blocks.js'
 
 /**
- * Modelos do sistema (um por segmento). Ficam no código, versionados, e não no banco.
+ * Modelos do sistema (um ou mais por segmento). Ficam no código, versionados, e não no banco.
  * Placeholders trocados na exibição: {cliente} e {empresa}.
+ *
+ * Ordem dos blocos nos modelos novos (pesquisa de mercado, ver specs/proposal-templates.md):
+ * capa → o momento do cliente → escopo → etapas → provas (portfólio, equipe, depoimentos)
+ * → investimento → dúvidas → chamada/contato → condições → aceite. Valor antes do preço.
  */
 export type SystemTemplate = {
     id: string
@@ -18,7 +22,11 @@ const cover = (headline: string, subheadline: string): ProposalBlock => ({
     id: 'cover', type: 'cover', visible: true, title: '',
     data: { headline, subheadline, showClientName: true }
 })
-const about = (body: string): ProposalBlock => ({ id: 'about', type: 'about', visible: true, title: 'Quem somos', data: { body } })
+const about = (body: string, title = 'Quem somos'): ProposalBlock => ({ id: 'about', type: 'about', visible: true, title, data: { body } })
+const team = (members: Array<[string, string, string]>, title = 'Quem vai cuidar do seu projeto'): ProposalBlock => ({
+    id: 'team', type: 'team', visible: true, title,
+    data: { members: members.map(([name, role, bio]) => ({ name, role, bio })) }
+})
 const scope = (intro: string, items: Array<[string, string]>, title = 'O que está incluso'): ProposalBlock => ({
     id: 'scope', type: 'scope', visible: true, title,
     data: { intro, items: items.map(([t, d]) => ({ title: t, description: d })) }
@@ -29,8 +37,8 @@ const timeline = (steps: Array<[string, string, string]>, title = 'Como vamos tr
     data: { steps: steps.map(([t, d, duration]) => ({ title: t, description: d, duration })) }
 })
 const gallery = (title = 'Portfólio'): ProposalBlock => ({ id: 'gallery', type: 'gallery', visible: true, title, data: { items: [] } })
-const testimonials = (): ProposalBlock => ({
-    id: 'testimonials', type: 'testimonials', visible: true, title: 'O que dizem nossos clientes',
+const testimonials = (title = 'O que dizem nossos clientes'): ProposalBlock => ({
+    id: 'testimonials', type: 'testimonials', visible: true, title,
     data: { items: [{ quote: 'Escreva aqui um depoimento real de um cliente satisfeito. Depoimentos aumentam muito a confiança de quem está decidindo.', author: 'Nome do cliente', role: 'Empresa ou cidade' }] }
 })
 const faq = (items: Array<[string, string]>): ProposalBlock => ({
@@ -38,8 +46,8 @@ const faq = (items: Array<[string, string]>): ProposalBlock => ({
     data: { items: items.map(([question, answer]) => ({ question, answer })) }
 })
 const terms = (body: string): ProposalBlock => ({ id: 'terms', type: 'terms', visible: true, title: 'Condições', data: { body } })
-const contact = (message: string): ProposalBlock => ({
-    id: 'contact', type: 'contact', visible: true, title: 'Vamos conversar?',
+const contact = (message: string, title = 'Vamos conversar?'): ProposalBlock => ({
+    id: 'contact', type: 'contact', visible: true, title,
     data: { message, showWhatsapp: true, showEmail: true, showInstagram: true }
 })
 const acceptance = (intro = 'Gostou? Escolha o pacote, confira o total e aceite online. Se quiser mudar algo, é só pedir um ajuste.'): ProposalBlock => ({
@@ -185,6 +193,171 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
             terms(DEFAULT_TERMS),
             acceptance(),
             contact('Qualquer dúvida, é só chamar.')
+        ]
+    },
+    // ── Modelos com os temas novos (referências de design enviadas pelo cliente) ──
+    {
+        id: 'sys-agency-growth', segment: 'AGENCY', theme: 'neon_lime',
+        name: 'Agência de crescimento', description: 'Preto e verde-limão, títulos fortes e preços em faixa de destaque.',
+        blocks: [
+            cover('Estratégia que gera crescimento real', 'Proposta para {cliente}, preparada pela {empresa}'),
+            about('<p>Hoje a {cliente} cresce pelo boca a boca, mas sem previsibilidade: tem mês bom e mês fraco, e fica difícil planejar.</p><p>Nosso trabalho é transformar marketing em um processo que gera contatos todo mês, com metas claras e números abertos.</p>', 'O seu momento'),
+            scope('Tudo o que entra no projeto:', [['Diagnóstico', 'Análise de canais, concorrência e funil de vendas.'], ['Estratégia', 'Plano de 90 dias com metas e prioridades.'], ['Conteúdo e campanhas', 'Produção, anúncios e otimização contínua.'], ['Relatórios', 'Resultados mês a mês, em linguagem simples.']], 'O que vamos fazer'),
+            timeline([['Imersão', 'Conhecemos o negócio, os clientes e os números.', 'Semana 1'], ['Plano', 'Metas, canais e calendário.', 'Semana 2'], ['Crescimento', 'Execução e ajustes a cada 15 dias.', 'A partir do mês 1']], 'Como vamos trabalhar'),
+            testimonials('Resultados de quem já cresceu com a gente'),
+            pricing('Três formatos para o seu momento. O mais escolhido está em destaque.', 'Investimento'),
+            faq([['Em quanto tempo vejo resultado?', 'Os primeiros sinais aparecem no primeiro mês; o crescimento consistente vem a partir do terceiro.'], ['Existe fidelidade?', 'Sugerimos 3 meses, o tempo mínimo para a estratégia amadurecer.']]),
+            cta('Vamos acelerar o seu crescimento', 'Quero começar'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-consulting-corporate', segment: 'CONSULTING', theme: 'corporate_green',
+        name: 'Consultoria corporativa', description: 'Claro e confiável, com faixas verde-petróleo. Bom para B2B e agronegócio.',
+        blocks: [
+            cover('Soluções que fortalecem o seu negócio', 'Proposta técnica e comercial para {cliente}'),
+            about('<p>Entendemos que a {cliente} precisa de <strong>eficiência e segurança</strong> para crescer: processos claros, custos sob controle e decisões baseadas em dados.</p>', 'O seu desafio'),
+            scope('Frentes de trabalho:', [['Diagnóstico', 'Mapeamento de processos, custos e indicadores.'], ['Plano de melhoria', 'Ações priorizadas por impacto e esforço.'], ['Implantação', 'Acompanhamento junto à equipe.'], ['Indicadores', 'Painel mensal de resultados.']], 'Escopo da consultoria'),
+            timeline([['Diagnóstico', 'Visitas, entrevistas e análise de dados.', '3 semanas'], ['Plano', 'Apresentação e validação com a diretoria.', '1 semana'], ['Implantação', 'Acompanhamento das ações.', '3 meses']], 'Metodologia'),
+            team([['Seu nome', 'Consultor responsável', 'Experiência relevante para este projeto.'], ['Nome do especialista', 'Especialista técnico', 'Área de domínio e principais resultados.']], 'Equipe do projeto'),
+            testimonials('Empresas que confiam em nós'),
+            pricing('Honorários conforme o escopo acima, com opção de acompanhamento estendido.', 'Investimento'),
+            faq([['Como é feito o acompanhamento?', 'Reuniões quinzenais e um relatório mensal com os indicadores.'], ['A equipe interna precisa se dedicar?', 'Pouco: pedimos um ponto focal e duas horas por semana.']]),
+            contact('Agende uma conversa com o nosso time.', 'Fale com a gente'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-tech-product', segment: 'TECH', theme: 'impact',
+        name: 'Produto digital', description: 'Títulos condensados, destaque em verde-limão e faixas claras. Para apps, sites e SaaS.',
+        blocks: [
+            cover('Do rascunho ao produto no ar', 'Proposta de desenvolvimento para {cliente}'),
+            about('<p>A {cliente} precisa colocar uma ideia no ar <strong>rápido e sem retrabalho</strong>, validando com usuários reais antes de investir pesado.</p>', 'O problema que vamos resolver'),
+            scope('O que será entregue:', [['Descoberta', 'Requisitos, fluxos e protótipo navegável.'], ['Design', 'Interface pensada para conversão e uso fácil.'], ['Desenvolvimento', 'Entregas a cada duas semanas.'], ['Lançamento', 'Publicação, métricas e 30 dias de garantia.']], 'Escopo'),
+            timeline([['Descoberta', 'Protótipo aprovado.', '2 semanas'], ['Construção', 'Sprints com demonstração.', '6 a 10 semanas'], ['Go-live', 'Publicação e treinamento.', '1 semana']], 'Cronograma'),
+            gallery('Projetos entregues'),
+            pricing('Valor fechado do projeto e planos opcionais de evolução.', 'Investimento'),
+            faq([['O código fica com quem?', 'Com você, após a quitação.'], ['E depois do lançamento?', 'Garantia de 30 dias inclusa; evolução contínua é opcional.']]),
+            cta('Vamos tirar isso do papel', 'Aprovar proposta'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-general-studio', segment: 'GENERAL', theme: 'geometric',
+        name: 'Estúdio criativo', description: 'Cinza e laranja, formas geométricas e cantos retos. Para design, branding e estúdios.',
+        blocks: [
+            cover('Uma marca que as pessoas lembram', 'Proposta criativa para {cliente}'),
+            about('<p>A {cliente} tem um ótimo produto, mas a comunicação ainda não mostra isso. Vamos criar uma identidade que <strong>diferencia e gera confiança</strong>.</p>', 'Onde estamos hoje'),
+            scope('Entregáveis:', [['Pesquisa', 'Público, concorrentes e posicionamento.'], ['Identidade visual', 'Logo, cores, tipografia e aplicações.'], ['Manual da marca', 'Guia para usar tudo do jeito certo.']], 'O que vamos criar'),
+            timeline([['Briefing', 'Conversa e pesquisa.', 'Semana 1'], ['Criação', 'Duas rotas criativas para escolher.', 'Semanas 2 a 4'], ['Entrega', 'Arquivos finais e manual.', 'Semana 5']], 'Processo'),
+            gallery('Trabalhos recentes'),
+            testimonials(),
+            pricing('Escolha o pacote; opcionais podem ser adicionados.', 'Investimento'),
+            faq([['Quantas revisões estão incluídas?', 'Duas rodadas de ajustes por etapa.']]),
+            contact('Vamos conversar sobre a sua marca?'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-photo-video-production', segment: 'PHOTO_VIDEO', theme: 'spotlight',
+        name: 'Produtora audiovisual', description: 'Preto com laranja vibrante e brilho. Para vídeos institucionais, publicidade e eventos.',
+        blocks: [
+            cover('Vídeos que fazem a sua marca ser vista', 'Proposta de produção para {cliente}'),
+            about('<p>A {cliente} quer contar a sua história com qualidade de cinema e chegar a mais pessoas, sem complicação na produção.</p>', 'O seu objetivo'),
+            scope('O que inclui:', [['Roteiro', 'Ideia, roteiro e decupagem.'], ['Captação', 'Equipe, câmeras, luz e som.'], ['Edição', 'Montagem, cor, trilha e legendas.'], ['Versões', 'Cortes para redes sociais.']], 'Produção completa'),
+            timeline([['Pré-produção', 'Roteiro e planejamento.', '1 semana'], ['Gravação', 'Diárias de captação.', 'Data combinada'], ['Pós-produção', 'Edição e entregas.', '2 a 3 semanas']], 'Etapas'),
+            gallery('Portfólio'),
+            pricing('Pacotes por projeto, com opcionais de versões e diárias extras.', 'Investimento'),
+            faq([['Vocês gravam fora da cidade?', 'Sim; deslocamento é combinado à parte.'], ['Quantas revisões?', 'Duas rodadas de ajustes na edição.']]),
+            cta('Vamos produzir o seu próximo vídeo', 'Quero produzir'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-health-beauty-skincare', segment: 'HEALTH_BEAUTY', theme: 'nude_editorial',
+        name: 'Estética e skincare', description: 'Tons moca e creme, serifa de revista. Antes e depois só com autorização da paciente.',
+        blocks: [
+            cover('Cuidar da pele é um ato de amor próprio', 'Plano personalizado para {cliente}'),
+            about('<p>Na avaliação, você contou o que mais incomoda e o resultado que deseja. Este plano foi montado a partir disso, respeitando o tempo da sua pele.</p>', 'O seu momento'),
+            scope('O seu protocolo:', [['Avaliação', 'Análise da pele e histórico.'], ['Sessões', 'Procedimentos do protocolo, no ritmo indicado.'], ['Home care', 'Rotina de cuidados em casa.'], ['Retorno', 'Acompanhamento da evolução.']], 'Seu tratamento'),
+            timeline([['Avaliação', 'Primeira consulta.', 'Dia 1'], ['Protocolo', 'Sessões programadas.', '4 a 8 semanas'], ['Manutenção', 'Cuidados para manter o resultado.', 'Contínuo']], 'Como vai ser'),
+            testimonials('Quem já cuidou da pele com a gente'),
+            pricing('Valores por sessão ou em pacote. O pacote completo tem o melhor custo.', 'Investimento'),
+            faq([['Quantas sessões vou precisar?', 'Indicamos na avaliação, de acordo com a sua pele.'], ['Posso remarcar?', 'Sim, com até 24 horas de antecedência.']]),
+            contact('Ficou com alguma dúvida? Chame no WhatsApp.', 'Fale comigo'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-health-beauty-clinic', segment: 'HEALTH_BEAUTY', theme: 'bronze_glass',
+        name: 'Clínica premium', description: 'Escuro e acolhedor, capa com foto e painel de vidro. Use uma foto sua na capa.',
+        blocks: [
+            cover('A beleza está nos detalhes', 'Plano de tratamento para {cliente}'),
+            about('<p>Cada rosto é único. O seu plano foi pensado para realçar a sua beleza natural, com <strong>segurança e naturalidade</strong>.</p>', 'O seu plano'),
+            scope('O que está incluído:', [['Consulta de avaliação', 'Análise facial completa.'], ['Procedimento', 'Técnica indicada para o seu caso.'], ['Revisão', 'Retorno para avaliar e ajustar.']], 'Seu tratamento'),
+            team([['Seu nome', 'Responsável técnica', 'Formação, registro profissional e especialidades.']], 'Quem vai cuidar de você'),
+            testimonials('Pacientes que confiam no nosso trabalho'),
+            pricing('Valores do tratamento e opções de pacote.', 'Investimento'),
+            faq([['O resultado fica natural?', 'Sim. Trabalhamos com doses e técnicas que respeitam os seus traços.'], ['Tem recuperação?', 'Na maioria dos casos você volta à rotina no mesmo dia.']]),
+            cta('Agende o seu procedimento', 'Quero agendar'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-health-beauty-harmonization', segment: 'HEALTH_BEAUTY', theme: 'champagne',
+        name: 'Harmonização facial', description: 'Bege nude, títulos finos e grandes. Antes e depois só educativo e com autorização (CFM 2.336/2023).',
+        blocks: [
+            cover('Desvende a arte da beleza natural', 'Proposta de harmonização para {cliente}'),
+            about('<p>A harmonização cuida dos pequenos detalhes que fazem toda a diferença: <strong>simetria, contornos e volume</strong>, sempre com naturalidade.</p>', 'Sobre o seu plano'),
+            scope('Áreas tratadas:', [['Lábios', 'Contorno e hidratação.'], ['Mandíbula e queixo', 'Definição e equilíbrio.'], ['Olhar', 'Suavização de sinais.']], 'Seu plano de harmonização'),
+            timeline([['Avaliação', 'Análise facial e planejamento.', 'Consulta'], ['Procedimento', 'Aplicação conforme o plano.', 'Sessão'], ['Revisão', 'Retorno para ajustes finos.', '15 a 30 dias']], 'Etapas'),
+            gallery('Resultados'),
+            pricing('Valores por área ou em protocolo completo.', 'Investimento'),
+            faq([['Dói?', 'Usamos anestésico para o seu conforto.'], ['Quanto tempo dura?', 'Depende do produto e da área; explicamos na avaliação.']]),
+            contact('Tire suas dúvidas e agende a sua avaliação.'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-construction-interiors', segment: 'CONSTRUCTION', theme: 'sand_portfolio',
+        name: 'Arquitetura e interiores', description: 'Portfólio claro em tons de areia, com faixas taupe e serifa elegante.',
+        blocks: [
+            cover('Arquitetura como forma de dar sentido ao espaço', 'Proposta comercial para {cliente}'),
+            about('<p>Você quer um espaço que seja a sua cara, funcional no dia a dia e bonito por muitos anos. Este projeto parte da sua rotina e do seu jeito de viver.</p>', 'Olá!'),
+            scope('Serviços:', [['Projeto arquitetônico', 'Estudo, layout e projeto executivo.'], ['Design de interiores', 'Mobiliário, iluminação e materiais.'], ['Acompanhamento de obra', 'Visitas técnicas e apoio a fornecedores.']], 'Meus serviços'),
+            timeline([['Briefing', 'Entendimento das necessidades.', 'Semana 1'], ['Estudo preliminar', 'Layout e conceito.', 'Semanas 2 a 4'], ['Projeto executivo', 'Detalhamento completo.', 'Semanas 5 a 8']], 'Etapas do projeto'),
+            gallery('Portfólio'),
+            testimonials('Palavras de clientes'),
+            pricing('Proposta de orçamento por etapa ou pacote completo.', 'Investimento'),
+            faq([['O orçamento da obra está incluso?', 'Não; ajudamos a cotar com fornecedores de confiança.']]),
+            contact('Vamos conversar sobre o seu espaço?'),
+            terms(DEFAULT_TERMS),
+            acceptance()
+        ]
+    },
+    {
+        id: 'sys-construction-architecture', segment: 'CONSTRUCTION', theme: 'golden_arch',
+        name: 'Escritório de arquitetura', description: 'Branco quente e dourado, títulos fortes em caixa alta e linhas finas.',
+        blocks: [
+            cover('Arquitetura que transforma', 'Projetos que inspiram, soluções que perduram. Proposta para {cliente}.'),
+            about('<p>Mais que projetar espaços, realizamos sonhos e valorizamos histórias. Para a {cliente}, o objetivo é <strong>unir beleza, conforto e funcionalidade</strong> dentro do orçamento.</p>', 'O seu projeto'),
+            scope('Nossos pilares:', [['Projeto', 'Planejamento inteligente e soluções sob medida.'], ['Inovação', 'Criatividade e tecnologia em cada etapa.'], ['Funcionalidade', 'Espaços pensados para o dia a dia.'], ['Sustentabilidade', 'Conforto com menos impacto.']], 'Nossos pilares'),
+            timeline([['Levantamento', 'Visita técnica e medições.', 'Semana 1'], ['Anteprojeto', 'Conceito e volumetria.', 'Semanas 2 a 5'], ['Executivo e aprovação', 'Detalhamento e prefeitura.', 'Semanas 6 a 12']], 'Do conceito à realização'),
+            gallery('Obras e projetos'),
+            team([['Seu nome', 'Arquiteto(a) responsável', 'Registro no CAU e principais projetos.']], 'Equipe'),
+            pricing('Honorários por etapa, com opção de gerenciamento de obra.', 'Investimento'),
+            faq([['A aprovação na prefeitura está incluída?', 'Sim, no pacote completo.']]),
+            cta('Vamos construir o seu projeto', 'Quero começar'),
+            terms(DEFAULT_TERMS),
+            acceptance()
         ]
     }
 ]
