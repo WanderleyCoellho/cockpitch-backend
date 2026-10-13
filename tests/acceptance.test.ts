@@ -60,6 +60,27 @@ function respond(slug: string, body: Record<string, unknown>) {
     return request(app).post(`/api/public/proposals/${slug}/responses`).set('User-Agent', 'vitest-browser').send(body)
 }
 
+/** CPF válido (dígitos verificadores corretos). */
+const CPF = '529.982.247-25'
+const drawing = { method: 'TYPED', typedText: 'Maria da Silva' }
+
+/** Pede o código como o cliente faria e lê o que foi para a fila de e-mails. */
+async function codeFor(slug: string, email = signer.signerEmail) {
+    // Ignora a espera de 1 minuto entre códigos (o teste de espera fica em signature.test.ts).
+    await prisma.signatureCode.updateMany({ where: { email: email.toLowerCase() }, data: { createdAt: new Date(Date.now() - 2 * 60_000) } })
+    const res = await request(app).post(`/api/public/proposals/${slug}/signature-code`).send({ signerName: signer.signerName, signerEmail: email })
+    expect(res.status).toBe(201)
+    const row = await prisma.emailOutbox.findFirstOrThrow({ where: { template: 'signature_code', to: email.toLowerCase() }, orderBy: { createdAt: 'desc' } })
+    return (row.payload as { code: string }).code
+}
+
+/** Corpo completo de aceite (assinatura + CPF + código). */
+const acceptBody = (code: string, extra: Record<string, unknown> = {}) => ({ type: 'ACCEPTED', ...signer, signerDocument: CPF, signature: drawing, code, agreeTerms: true, ...extra })
+
+async function accept(slug: string, extra: Record<string, unknown> = {}) {
+    return respond(slug, acceptBody(await codeFor(slug), extra))
+}
+
 describe('marca na página pública', () => {
     it('Grátis mostra "Feito com Lumen Deal"; planos pagos removem; o plano não é exposto', async () => {
         const free = await createUser('Grátis', { planTier: 'FREE', billingStatus: 'ACTIVE' })
@@ -82,13 +103,9 @@ describe('aceite online', () => {
     it('aceite válido: 201, total calculado no servidor, evidência e status atualizados', async () => {
         const { slug, proposalId, packages } = await setup()
         const optional = packages[0].items.find((i) => i.kind === 'OPTIONAL')!
-        const res = await respond(slug, {
-            type: 'ACCEPTED',
-            ...signer,
-            signerDocument: '123.456.789-00',
+        const res = await accept(slug, {
             packageId: packages[0].id,
             optionalItemIds: [optional.id],
-            agreeTerms: true,
             // o navegador não manda o total; se mandasse, seria ignorado
             totalCents: 1
         })
@@ -115,22 +132,24 @@ describe('aceite online', () => {
             totalCents: 135000,
             contentHash: res.body.response.contentHash
         })
-        expect(JSON.stringify(pub.body.acceptance)).not.toContain('123.456')
+        expect(JSON.stringify(pub.body)).not.toContain('52998224725')
+        expect(JSON.stringify(pub.body)).not.toContain('529.982')
     })
 
     it('segundo aceite → 409; respostas simultâneas: só uma vence', async () => {
         const { slug, proposalId } = await setup()
-        const body = { type: 'ACCEPTED', ...signer, agreeTerms: true }
+        const body = acceptBody(await codeFor(slug))
         const results = await Promise.all([respond(slug, body), respond(slug, body), respond(slug, body)])
-        expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409])
-        expect(results.find((r) => r.status === 409)!.body.code).toBe('ALREADY_ACCEPTED')
+        // Uma vence; as outras param no código já usado ou na proposta já aceita.
+        expect(results.filter((r) => r.status === 201)).toHaveLength(1)
+        expect(results.filter((r) => r.status !== 201).every((r) => ['ALREADY_ACCEPTED', 'CODE_EXPIRED'].includes(r.body.code))).toBe(true)
         expect(await prisma.proposalResponse.count({ where: { proposalId } })).toBe(1)
     })
 
     it('proposta vencida → 409 EXPIRED', async () => {
         const { slug, proposalId } = await setup({ validityDays: 1 })
         await prisma.proposal.update({ where: { id: proposalId }, data: { createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000) } })
-        const res = await respond(slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })
+        const res = await respond(slug, acceptBody('000000'))
         expect(res.status).toBe(409)
         expect(res.body.code).toBe('EXPIRED')
         expect((await request(app).get(`/api/public/proposals/${slug}`)).body.acceptance.state).toBe('EXPIRED')
@@ -150,14 +169,15 @@ describe('aceite online', () => {
         expect((await respond(slug, { type: 'DECLINED', ...signer })).status).toBe(201)
         expect(await prisma.proposal.findUniqueOrThrow({ where: { id: proposalId } })).toMatchObject({ status: 'ABERTA', commercialStatus: 'NEGADA' })
         // ainda pode aceitar depois
-        expect((await respond(slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })).status).toBe(201)
+        expect((await accept(slug)).status).toBe(201)
     })
 
     it('valida a seleção: pacote de fora, opcional de outro pacote, pacote obrigatório com mais de um', async () => {
         const { slug, packages } = await setup({ packages: 2 })
         const otherOptional = packages[1].items.find((i) => i.kind === 'OPTIONAL')!
         const included = packages[0].items.find((i) => i.kind === 'INCLUDED')!
-        const base = { type: 'ACCEPTED', ...signer, agreeTerms: true }
+        // A seleção é validada antes do código (que nunca chega a ser conferido aqui).
+        const base = acceptBody('000000')
 
         const missing = await respond(slug, base)
         expect(missing.status).toBe(400)
@@ -171,24 +191,23 @@ describe('aceite online', () => {
 
     it('só aceita respostas quando o bloco de aceite está visível; respeita opções do bloco', async () => {
         const legacy = await setup({ blocks: null })
-        const res = await respond(legacy.slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })
+        const res = await respond(legacy.slug, acceptBody('000000'))
         expect(res.status).toBe(409)
         expect(res.body.code).toBe('NOT_ENABLED')
         expect((await request(app).get(`/api/public/proposals/${legacy.slug}`)).body.acceptance.enabled).toBe(false)
 
         const hidden = await setup({ blocks: [{ ...acceptanceBlock(), visible: false }] })
-        expect((await respond(hidden.slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })).body.code).toBe('NOT_ENABLED')
+        expect((await respond(hidden.slug, acceptBody('000000'))).body.code).toBe('NOT_ENABLED')
 
         const strict = await setup({ blocks: [acceptanceBlock({ allowDecline: false, requireDocument: true })] })
         expect((await respond(strict.slug, { type: 'DECLINED', ...signer })).body.code).toBe('NOT_ALLOWED')
-        expect((await respond(strict.slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })).body.code).toBe('DOCUMENT_REQUIRED')
-        expect((await respond(strict.slug, { type: 'ACCEPTED', ...signer, agreeTerms: true, signerDocument: '12.345.678/0001-90' })).status).toBe(201)
+        expect((await accept(strict.slug)).status).toBe(201)
     })
 
     it('painel: lista em ordem cronológica com IP e data; reabrir mantém o histórico; isolamento entre empresas', async () => {
         const { a, slug, proposalId } = await setup()
         await respond(slug, { type: 'CHANGE_REQUESTED', ...signer, message: 'Pode ajustar o prazo?' })
-        await respond(slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })
+        await accept(slug)
 
         const list = await request(app).get(`/api/proposals/${proposalId}/responses`).set('Authorization', a.auth)
         expect(list.status).toBe(200)
@@ -208,15 +227,15 @@ describe('aceite online', () => {
         expect(reopened.body.proposal).toMatchObject({ status: 'ABERTA', commercialStatus: 'NEGOCIANDO' })
         expect((await request(app).post(`/api/proposals/${proposalId}/reopen`).set('Authorization', a.auth)).status).toBe(409)
         expect(await prisma.proposalResponse.count({ where: { proposalId } })).toBe(2)
-        expect((await respond(slug, { type: 'ACCEPTED', ...signer, agreeTerms: true })).status).toBe(201)
+        expect((await accept(slug)).status).toBe(201)
     })
 
-    it('rate limit: no máximo 5 respostas por hora por IP na mesma proposta', async () => {
+    it('rate limit: no máximo 10 respostas por hora por IP na mesma proposta', async () => {
         const { slug } = await setup()
         const statuses = []
-        for (let i = 0; i < 6; i++) statuses.push((await respond(slug, { type: 'DECLINED', ...signer })).status)
-        expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201])
-        expect(statuses[5]).toBe(429)
+        for (let i = 0; i < 11; i++) statuses.push((await respond(slug, { type: 'DECLINED', ...signer })).status)
+        expect(statuses.slice(0, 10).every((s) => s === 201)).toBe(true)
+        expect(statuses[10]).toBe(429)
     })
 
     it('o hash muda quando o conteúdo ou a seleção mudam', async () => {

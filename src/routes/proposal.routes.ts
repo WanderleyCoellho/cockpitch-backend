@@ -11,6 +11,7 @@ import { assertCanCreateProposal } from '../services/workspace.service.js'
 import { serializePackage } from '../services/package.service.js'
 import { blocksSchema, collectMediaUrls } from '../services/blocks.js'
 import { resolveTemplate } from '../services/template.service.js'
+import { providerSignInputSchema, sendSignatureCode, signaturesFor, signAsProvider } from '../services/signature.service.js'
 
 // Pacotes da proposta com preço calculado e quantidade numérica.
 function withPricedPackages<T extends { packageIds: Parameters<typeof serializePackage>[0][] }>(proposal: T) {
@@ -362,6 +363,53 @@ proposalRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     })
 
     return res.json({ proposal: withPricedPackages(updated) })
+})
+
+// ── Assinatura eletrônica da empresa (spec digital-signature) ──
+
+async function proposalWithPackages(auth: AuthenticatedRequest['auth'], proposalId: string) {
+    return prisma.proposal.findFirst({
+        where: { id: proposalId, provider: { workspaceId: workspaceIdOf(auth) } },
+        include: { packageIds: { include: { items: true } }, provider: { include: { workspace: { select: { name: true, brandColor: true } } } } }
+    })
+}
+
+// Assinaturas vigentes (empresa e cliente) com a evidência completa, para o painel e o comprovante.
+proposalRouter.get('/:id/signatures', async (req: AuthenticatedRequest, res) => {
+    const proposal = await proposalWithPackages(req.auth, req.params.id)
+    if (!proposal) return res.status(404).json({ message: 'Proposal not found' })
+    return res.json(await signaturesFor(proposal, { panel: true }))
+})
+
+// Envia o código de 6 dígitos para o e-mail da conta de quem vai assinar.
+proposalRouter.post('/:id/signature/code', async (req: AuthenticatedRequest, res) => {
+    const proposal = await proposalWithPackages(req.auth, req.params.id)
+    if (!proposal) return res.status(404).json({ message: 'Proposal not found' })
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth!.userId }, select: { name: true, email: true } })
+    const sent = await sendSignatureCode({
+        proposalId: proposal.id,
+        role: 'PROVIDER',
+        email: user.email,
+        name: user.name,
+        companyName: proposal.provider.name || proposal.provider.workspace?.name || 'Sua empresa',
+        brandColor: proposal.provider.workspace?.brandColor,
+        clientName: proposal.clientName,
+        ip: req.ip
+    })
+    return res.status(201).json({ sentTo: sent.email, expiresAt: sent.expiresAt })
+})
+
+// Assina a versão atual da proposta em nome da empresa (CPF + assinatura + código).
+proposalRouter.post('/:id/signature', async (req: AuthenticatedRequest, res) => {
+    const parsed = providerSignInputSchema.safeParse(req.body)
+    if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos', issues: parsed.error.issues })
+    }
+    const proposal = await proposalWithPackages(req.auth, req.params.id)
+    if (!proposal) return res.status(404).json({ message: 'Proposal not found' })
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth!.userId }, select: { id: true, name: true, email: true } })
+    await signAsProvider({ proposal, user, input: parsed.data, meta: { ip: req.ip, userAgent: req.get('user-agent') ?? undefined } })
+    return res.status(201).json(await signaturesFor(proposal, { panel: true }))
 })
 
 // Respostas do cliente (aceite/ajuste/recusa), em ordem cronológica.

@@ -48,10 +48,21 @@ const view = (proposalId: string, auth?: string) => {
 describe('notificações por e-mail', () => {
     it('aceite gera 2 e-mails na fila (equipe + cliente) e o envio usa reply-to correto', async () => {
         const { slug, a } = await setupProposal()
+        await request(app).post(`/api/public/proposals/${slug}/signature-code`).send({ signerName: 'Maria Cliente', signerEmail: 'maria@cliente.com' })
+        const codeMail = await prisma.emailOutbox.findFirstOrThrow({ where: { template: 'signature_code' } })
         const res = await request(app)
             .post(`/api/public/proposals/${slug}/responses`)
-            .send({ type: 'ACCEPTED', signerName: 'Maria Cliente', signerEmail: 'maria@cliente.com', agreeTerms: true })
+            .send({
+                type: 'ACCEPTED',
+                signerName: 'Maria Cliente',
+                signerEmail: 'maria@cliente.com',
+                signerDocument: '529.982.247-25',
+                signature: { method: 'TYPED', typedText: 'Maria Cliente' },
+                code: (codeMail.payload as { code: string }).code,
+                agreeTerms: true
+            })
         expect(res.status).toBe(201)
+        await prisma.emailOutbox.delete({ where: { id: codeMail.id } })
 
         const queued = await prisma.emailOutbox.findMany({ orderBy: { template: 'asc' } })
         expect(queued.map((q) => [q.template, q.to])).toEqual([

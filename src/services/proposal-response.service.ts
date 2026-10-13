@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import type { Package, PackageItem, Prisma, Proposal, ProposalResponseType } from '@prisma/client'
 import { z } from 'zod'
 import { HttpError } from '../lib/httpError.js'
@@ -6,8 +5,12 @@ import { prisma } from '../lib/prisma.js'
 import { blockSchema } from './blocks.js'
 import { toPricingInput } from './package.service.js'
 import { calculatePackagePricing } from './pricing.js'
+import { contentHashFor } from './content-hash.js'
+
+export { contentHashFor }
 import { kickEmailDispatch } from './email/outbox.js'
 import { notifyProposalResponse } from './notifications.service.js'
+import { codeSchema, consumeSignatureCode, cpfSchema, createClientSignature, signatureDrawingSchema } from './signature.service.js'
 
 /**
  * Aceite online (spec proposal-online-acceptance).
@@ -30,7 +33,10 @@ export const responseInputSchema = z.discriminatedUnion('type', [
         type: z.literal('ACCEPTED'),
         ...signer,
         ...selection,
-        signerDocument: z.string().trim().max(30).optional(),
+        /** Aceitar = assinar: CPF, assinatura (desenhada ou digitada) e o código enviado ao e-mail. */
+        signerDocument: cpfSchema,
+        signature: signatureDrawingSchema,
+        code: codeSchema,
         message: z.string().trim().max(2000).optional(),
         agreeTerms: z.literal(true, { errorMap: () => ({ message: 'É preciso concordar com as condições para aceitar.' }) })
     }),
@@ -157,31 +163,6 @@ function resolveSelection(proposal: ProposalForResponse, packageId: string | und
     }
 }
 
-/** Serialização com chaves ordenadas: o mesmo conteúdo sempre gera o mesmo hash. */
-function stableStringify(value: unknown): string {
-    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-    if (value && typeof value === 'object' && !(value instanceof Date)) {
-        return `{${Object.keys(value)
-            .sort()
-            .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`)
-            .join(',')}}`
-    }
-    return JSON.stringify(value instanceof Date ? value.toISOString() : value ?? null)
-}
-
-/** Evidência do que o cliente viu: blocos + pacotes (com itens e preços) + o que escolheu. */
-export function contentHashFor(proposal: ProposalForResponse, selection: unknown) {
-    const packages = proposal.packageIds.map((pkg) => ({
-        id: pkg.id,
-        name: pkg.name,
-        description: pkg.description,
-        pricing: toPricingInput(pkg),
-        items: pkg.items.map((item) => ({ id: item.id, name: item.name, description: item.description, unit: item.unit }))
-    }))
-    const content = { proposalId: proposal.id, clientName: proposal.clientName, blocks: proposal.blocks, packages, selection }
-    return createHash('sha256').update(stableStringify(content)).digest('hex')
-}
-
 const COMMERCIAL_STATUS: Record<ProposalResponseType, 'ACEITA' | 'NEGADA' | 'NEGOCIANDO'> = {
     ACCEPTED: 'ACEITA',
     DECLINED: 'NEGADA',
@@ -199,9 +180,6 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
     if (!block) throw new HttpError(409, 'Esta proposta não aceita respostas online. Fale com a empresa pelo contato da página.', 'NOT_ENABLED')
     if (input.type === 'DECLINED' && !block.data.allowDecline) throw new HttpError(400, 'Opção indisponível nesta proposta.', 'NOT_ALLOWED')
     if (input.type === 'CHANGE_REQUESTED' && !block.data.allowChangeRequest) throw new HttpError(400, 'Opção indisponível nesta proposta.', 'NOT_ALLOWED')
-    if (input.type === 'ACCEPTED' && block.data.requireDocument && !input.signerDocument) {
-        throw new HttpError(400, 'Informe seu CPF ou CNPJ para aceitar.', 'DOCUMENT_REQUIRED')
-    }
 
     if (proposal.status !== 'ABERTA') {
         const accepted = proposal.status === 'FECHADA'
@@ -217,6 +195,12 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
             : resolveSelection(proposal, input.packageId, input.optionalItemIds, input.type === 'ACCEPTED')
 
     const saved = await prisma.$transaction(async (tx) => {
+        // Aceite exige o código enviado ao e-mail de quem assina (confere antes de mudar qualquer coisa).
+        const verifiedAt =
+            input.type === 'ACCEPTED'
+                ? await consumeSignatureCode(tx, { proposalId: proposal.id, role: 'CLIENT', email: input.signerEmail, code: input.code })
+                : null
+
         // Condição no próprio UPDATE: com cliques duplos ou abas simultâneas, só a primeira resposta vence.
         const updated = await tx.proposal.updateMany({
             where: { id: proposal.id, status: 'ABERTA' },
@@ -230,7 +214,7 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
                 type: input.type,
                 signerName: input.signerName,
                 signerEmail: input.signerEmail,
-                signerDocument: input.type === 'ACCEPTED' ? input.signerDocument || null : null,
+                signerDocument: input.type === 'ACCEPTED' ? input.signerDocument : null,
                 message: input.message || null,
                 selection: (selection ?? undefined) as Prisma.InputJsonValue | undefined,
                 totalCents,
@@ -239,6 +223,19 @@ export async function submitProposalResponse(slug: string, input: ResponseInput,
                 userAgent: meta.userAgent?.slice(0, 500) ?? null
             }
         })
+        if (input.type === 'ACCEPTED' && verifiedAt) {
+            await createClientSignature(tx, {
+                proposalId: proposal.id,
+                responseId: created.id,
+                signerName: input.signerName,
+                signerEmail: input.signerEmail,
+                cpf: input.signerDocument,
+                drawing: input.signature,
+                contentHash: created.contentHash,
+                verifiedAt,
+                meta
+            })
+        }
         // Avisos por e-mail entram na fila na mesma transação: sem resposta gravada, sem e-mail.
         await notifyProposalResponse(tx, created)
         return created

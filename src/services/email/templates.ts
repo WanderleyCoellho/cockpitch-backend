@@ -33,6 +33,13 @@ export type EmailTemplates = {
         companyEmail?: string | null
         companyWhatsapp?: string | null
     }
+    signature_code: Brand & {
+        name: string
+        code: string
+        role: 'PROVIDER' | 'CLIENT'
+        clientName: string
+        expiresMinutes: number
+    }
     team_invite: Brand & { inviterName?: string | null; role: 'OWNER' | 'ADMIN' | 'MEMBER'; inviteUrl: string; expiresAt: string }
 }
 
@@ -165,6 +172,26 @@ export function renderEmail<T extends TemplateName>(template: T, payload: EmailT
                     `A ${p.companyName} vai entrar em contato com os próximos passos.${contact ? ` Contato: ${contact}.` : ''}`,
                     `Aceite registrado em ${formatDateTime(p.at)}. Código de verificação: ${p.hash.slice(0, 16)}`,
                     `Ver a proposta: ${p.proposalUrl}`
+                ].join('\n')
+            }
+        }
+        case 'signature_code': {
+            const p = payload as EmailTemplates['signature_code']
+            const what = p.role === 'CLIENT' ? `assinar a proposta da ${esc(p.companyName)}` : `assinar a proposta para ${esc(p.clientName)}`
+            const whatText = p.role === 'CLIENT' ? `assinar a proposta da ${p.companyName}` : `assinar a proposta para ${p.clientName}`
+            return {
+                subject: `${p.code} é o seu código para assinar a proposta`,
+                html: layout(
+                    p,
+                    `<p style="margin:0 0 12px">Olá, ${esc(p.name.split(' ')[0])}! Use este código para ${what}:</p>
+                     <p style="margin:0 0 16px;font-size:32px;letter-spacing:8px;font-weight:700;font-family:'Courier New',monospace">${esc(p.code)}</p>
+                     <p style="margin:0 0 12px">Ele vale por ${p.expiresMinutes} minutos. O código confirma que este e-mail é seu e fica registrado no comprovante da assinatura.</p>
+                     <p style="margin:0;color:#8a857c;font-size:12px">Não pediu este código? Ignore esta mensagem: sem ele ninguém assina em seu nome.</p>`
+                ),
+                text: [
+                    `Olá, ${p.name}! Use este código para ${whatText}: ${p.code}`,
+                    `Ele vale por ${p.expiresMinutes} minutos e fica registrado no comprovante da assinatura.`,
+                    'Não pediu este código? Ignore esta mensagem.'
                 ].join('\n')
             }
         }

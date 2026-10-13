@@ -2,8 +2,11 @@ import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
 import { serializePackage } from '../services/package.service.js'
 import { resolveEntitlements } from '../services/entitlements.js'
-import { proposalResponseRateLimit } from '../middlewares/rateLimit.js'
-import { acceptanceStateFor, responseInputSchema, submitProposalResponse } from '../services/proposal-response.service.js'
+import { proposalResponseRateLimit, signatureCodeRateLimit } from '../middlewares/rateLimit.js'
+import { z } from 'zod'
+import { HttpError } from '../lib/httpError.js'
+import { acceptanceStateFor, findAcceptanceBlock, proposalExpiresAt, responseInputSchema, submitProposalResponse } from '../services/proposal-response.service.js'
+import { sendSignatureCode, signaturesFor } from '../services/signature.service.js'
 
 export const proposalPublicRouter = Router()
 
@@ -40,6 +43,8 @@ proposalPublicRouter.get('/proposals/:slug', async (req, res) => {
     return res.json({
         proposal: { ...proposal, provider, packageIds: proposal.packageIds.map(serializePackage) },
         acceptance: await acceptanceStateFor(proposal),
+        // Assinaturas da empresa e do cliente, sem e-mail, IP nem CPF completo.
+        signatures: await signaturesFor(proposal),
         branding: { removeBranding }
     })
 })
@@ -64,4 +69,37 @@ proposalPublicRouter.post('/proposals/:slug/responses', proposalResponseRateLimi
             contentHash: response.contentHash
         }
     })
+})
+
+const codeRequestSchema = z.object({
+    signerName: z.string().trim().min(3, 'Informe seu nome completo').max(120),
+    signerEmail: z.string().trim().toLowerCase().email('E-mail inválido').max(200)
+})
+
+// Código de 6 dígitos para o cliente assinar o aceite (confirma que o e-mail é dele).
+proposalPublicRouter.post('/proposals/:slug/signature-code', signatureCodeRateLimit, async (req, res) => {
+    const parsed = codeRequestSchema.safeParse(req.body)
+    if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos', issues: parsed.error.issues })
+    }
+    const proposal = await prisma.proposal.findUnique({
+        where: { slug: String(req.params.slug) },
+        include: { provider: { include: { workspace: { select: { name: true, brandColor: true } } } } }
+    })
+    if (!proposal || proposal.status === 'ARQUIVADA') throw new HttpError(404, 'Proposta não encontrada.', 'NOT_FOUND')
+    if (!findAcceptanceBlock(proposal.blocks)) throw new HttpError(409, 'Esta proposta não aceita respostas online.', 'NOT_ENABLED')
+    if (proposal.status !== 'ABERTA') throw new HttpError(409, 'Esta proposta não está mais aberta para assinatura.', 'CLOSED')
+    if (proposalExpiresAt(proposal).getTime() < Date.now()) throw new HttpError(409, 'O prazo desta proposta terminou.', 'EXPIRED')
+
+    const sent = await sendSignatureCode({
+        proposalId: proposal.id,
+        role: 'CLIENT',
+        email: parsed.data.signerEmail,
+        name: parsed.data.signerName,
+        companyName: proposal.provider.name || proposal.provider.workspace?.name || 'a empresa',
+        brandColor: proposal.provider.workspace?.brandColor,
+        clientName: proposal.clientName,
+        ip: req.ip
+    })
+    return res.status(201).json({ sentTo: sent.email, expiresAt: sent.expiresAt })
 })

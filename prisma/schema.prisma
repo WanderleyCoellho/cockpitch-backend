@@ -16,6 +16,9 @@ model User {
   googleSub            String?           @unique
   /// Guia de primeiros passos: tours vistos, checklist oculto, link compartilhado (spec in-app-guidance).
   onboarding           Json?
+  /// Assinatura salva no perfil (método + imagem ou texto) e CPF, reaproveitados ao assinar propostas.
+  savedSignature       Json?
+  cpf                  String?
   name                 String
   role                 UserRole          @default(PROVIDER)
   planTier             PlanTier          @default(FREE)
@@ -280,36 +283,37 @@ model PackageItem {
 }
 
 model Proposal {
-  id                 String             @id @default(cuid())
+  id                 String              @id @default(cuid())
   providerId         String
-  provider           Provider           @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  provider           Provider            @relation(fields: [providerId], references: [id], onDelete: Cascade)
   clientName         String
-  slug               String             @unique
+  slug               String              @unique
   serviceDate        String?
-  validityDays       Int                @default(30)
-  status             ProposalStatus     @default(ABERTA)
-  commercialStatus   CommercialStatus   @default(SEM_RESPOSTA)
+  validityDays       Int                 @default(30)
+  status             ProposalStatus      @default(ABERTA)
+  commercialStatus   CommercialStatus    @default(SEM_RESPOSTA)
   heroVideoUrl       String?
   weddingPhotoUrl    String?
-  theme              String?            @default("dark_luxury")
+  theme              String?             @default("dark_luxury")
   themeCustom        Json?
   sections           Json?
   backstageMedia     Json?
   differentialsMedia Json?
-  videoSoundEnabled  Boolean            @default(false)
+  videoSoundEnabled  Boolean             @default(false)
   sectionsConfig     Json?
   /// Proposta em blocos (spec 003). Nulo = proposta antiga, exibida com o layout legado.
   blocks             Json?
-  blocksVersion      Int                @default(1)
+  blocksVersion      Int                 @default(1)
   /// Modelo usado na criação (sys-* do sistema ou id de ProposalTemplate).
   templateId         String?
   /// Quando o link foi copiado/compartilhado pelo painel (conta como "enviada" no Analytics).
   sharedAt           DateTime?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  packageIds         Package[]          @relation("ProposalPackages")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  packageIds         Package[]           @relation("ProposalPackages")
   views              ProposalView[]
   responses          ProposalResponse[]
+  signatures         ProposalSignature[]
 
   @@index([providerId])
   @@index([slug])
@@ -336,6 +340,63 @@ model ProposalResponse {
   createdAt      DateTime             @default(now())
 
   @@index([proposalId, createdAt])
+}
+
+/// Assinatura eletrônica da proposta: da empresa (ao publicar) e do cliente (no aceite).
+/// Evidências: CPF, e-mail confirmado por código, IP, navegador, data e o código (SHA-256) do conteúdo assinado.
+model ProposalSignature {
+  id              String          @id @default(cuid())
+  proposalId      String
+  proposal        Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  role            SignatureRole
+  /// Quem assinou pela empresa (nulo para o cliente).
+  userId          String?
+  /// Aceite do cliente ao qual a assinatura pertence.
+  responseId      String?         @unique
+  signerName      String
+  signerEmail     String
+  /// CPF só com dígitos.
+  signerDocument  String
+  signerTitle     String?
+  method          SignatureMethod
+  /// PNG em data URL (assinatura desenhada).
+  image           String?
+  /// Nome digitado (assinatura gerada em fonte manuscrita).
+  typedText       String?
+  /// SHA-256 do conteúdo no momento da assinatura (empresa: blocos + pacotes; cliente: + escolha).
+  contentHash     String
+  emailVerifiedAt DateTime
+  ip              String?
+  userAgent       String?
+  createdAt       DateTime        @default(now())
+
+  @@index([proposalId, role, createdAt])
+}
+
+/// Código de 6 dígitos enviado por e-mail para confirmar quem assina. Guardado só como hash.
+model SignatureCode {
+  id         String        @id @default(cuid())
+  proposalId String
+  role       SignatureRole
+  email      String
+  codeHash   String
+  attempts   Int           @default(0)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  ip         String?
+  createdAt  DateTime      @default(now())
+
+  @@index([proposalId, email, createdAt])
+}
+
+enum SignatureRole {
+  PROVIDER
+  CLIENT
+}
+
+enum SignatureMethod {
+  DRAWN
+  TYPED
 }
 
 enum ProposalResponseType {

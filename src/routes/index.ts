@@ -17,6 +17,7 @@ import { workspaceRouter } from './workspace.routes.js'
 import { inviteRouter } from './invite.routes.js'
 import { templateRouter } from './template.routes.js'
 import { blockLibraryRouter } from './block-library.routes.js'
+import { profileRouter } from './profile.routes.js'
 
 export const apiRouter = Router()
 
@@ -26,6 +27,7 @@ apiRouter.use('/workspaces', workspaceRouter)
 apiRouter.use('/invites', inviteRouter)
 apiRouter.use('/templates', templateRouter)
 apiRouter.use('/block-library', blockLibraryRouter)
+apiRouter.use('/me', profileRouter)
 apiRouter.use('/providers', providerRouter)
 apiRouter.use('/packages', packageRouter)
 apiRouter.use('/package-items', packageItemRouter)
