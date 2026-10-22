@@ -5,6 +5,12 @@ import { runBillingReconciliationOnce } from '../jobs/billingReconciliation.job.
 import { verifyOpsAccessToken } from '../lib/opsJwt.js'
 import { getCookieValue } from '../lib/httpCookies.js'
 import { prisma } from '../lib/prisma.js'
+import { syncOwnedWorkspaceLicense } from '../services/license.service.js'
+import { resolveEntitlements } from '../services/entitlements.js'
+import path from 'path'
+import fs from 'fs'
+import { legacyReceiptUploadsDir, receiptFilePath, receiptUploadsDir } from '../lib/receiptStorage.js'
+import { getStorage, isValidObjectKey, PRIVATE_PREFIX } from '../lib/storage/index.js'
 
 export const internalRouter = Router()
 
@@ -89,7 +95,7 @@ function auditManualRun(payload: {
     })
 }
 
-function ensureInternalAccess(req: Request, res: Response) {
+export function ensureInternalAccess(req: Request, res: Response) {
     const header = req.headers.authorization
     const bearerToken = header && header.startsWith('Bearer ') ? header.replace('Bearer ', '').trim() : null
     const cookieToken = getCookieValue(req, env.OPS_COOKIE_NAME)
@@ -326,15 +332,46 @@ internalRouter.get('/licensing/users', async (req, res) => {
             stripeCustomerId: true,
             stripeSubscriptionId: true,
             createdAt: true,
-            updatedAt: true
+            updatedAt: true,
+            passwordHash: true,
+            googleSub: true,
+            memberships: {
+                select: {
+                    role: true,
+                    workspace: {
+                        select: { id: true, name: true, planTier: true, billingStatus: true, licensePolicy: true }
+                    }
+                },
+                orderBy: { createdAt: 'asc' }
+            }
         },
         take: limit,
         orderBy: { updatedAt: 'asc' }
     })
 
+    // Plano é da empresa: mostra de quais empresas a pessoa participa, com papel e plano efetivo.
+    // `ownsWorkspace` indica se a licença editável (a da empresa própria) existe.
     return res.json({
         count: users.length,
-        users
+        users: users.map(({ memberships, passwordHash, googleSub, ...user }) => ({
+            ...user,
+            // Como a pessoa entra (sem expor hash nem identificador do Google).
+            loginMethods: [passwordHash ? 'PASSWORD' : null, googleSub ? 'GOOGLE' : null].filter(Boolean),
+            ownsWorkspace: memberships.some((m) => m.role === 'OWNER'),
+            workspaces: memberships.map((m) => {
+                const entitlements = resolveEntitlements(m.workspace)
+                return {
+                    id: m.workspace.id,
+                    name: m.workspace.name,
+                    role: m.role,
+                    planTier: m.workspace.planTier,
+                    billingStatus: m.workspace.billingStatus,
+                    licensePolicy: m.workspace.licensePolicy,
+                    effectiveTier: entitlements.effectiveTier,
+                    members: entitlements.members
+                }
+            })
+        }))
     })
 })
 
@@ -354,14 +391,26 @@ internalRouter.patch('/licensing/users/:userId', async (req, res) => {
         return res.status(404).json({ message: 'User not found' })
     }
 
+    // Membro convidado sem empresa própria: a licença dele vem da empresa em que participa.
+    const ownsWorkspace = await prisma.workspaceMember.count({ where: { userId: user.id, role: 'OWNER' } })
+    if (!ownsWorkspace) {
+        return res.status(409).json({
+            message: 'Esta pessoa não tem empresa própria; ela usa o plano da empresa em que é membro. Altere a licença do dono dessa empresa.',
+            code: 'NO_OWNED_WORKSPACE'
+        })
+    }
+
+    const licenseData = {
+        planTier: parsed.data.planTier,
+        billingStatus: parsed.data.billingStatus,
+        licensePolicy: parsed.data.licensePolicy,
+        licensePolicyNote: parsed.data.licensePolicyNote
+    }
+    // Fonte da verdade: o workspace que a pessoa possui. User guarda o espelho exibido no Ops.
+    await syncOwnedWorkspaceLicense(prisma, user.id, licenseData)
     const updated = await prisma.user.update({
         where: { id: user.id },
-        data: {
-            planTier: parsed.data.planTier,
-            billingStatus: parsed.data.billingStatus,
-            licensePolicy: parsed.data.licensePolicy,
-            licensePolicyNote: parsed.data.licensePolicyNote
-        },
+        data: licenseData,
         select: {
             id: true,
             email: true,
@@ -464,8 +513,57 @@ internalRouter.get('/licensing/receipts', async (req, res) => {
 
     return res.json({
         count: receipts.length,
-        receipts
+        // A URL pública antiga deixa de valer: o arquivo só é lido pela rota autenticada abaixo.
+        receipts: receipts.map((receipt) => ({ ...receipt, fileUrl: receiptFilePath(receipt.id) }))
     })
+})
+
+internalRouter.get('/licensing/receipts/:receiptId/file', async (req, res) => {
+    const auth = ensureInternalAccess(req, res)
+    if (!auth.ok) {
+        return auth.response
+    }
+
+    const receipt = await prisma.paymentReceipt.findUnique({
+        where: { id: req.params.receiptId },
+        select: { storedFilename: true, mimeType: true, originalFilename: true }
+    })
+    if (!receipt) {
+        return res.status(404).json({ message: 'Receipt not found' })
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+
+    // Comprovantes atuais ficam no espaço privado do storage (chave "private/...").
+    if (receipt.storedFilename.startsWith(PRIVATE_PREFIX) && isValidObjectKey(receipt.storedFilename)) {
+        const storage = getStorage()
+        if (storage.kind === 's3') {
+            // URL assinada curta: o arquivo sai direto do bucket, só para quem tem sessão Ops.
+            const url = await storage.getSignedReadUrl(receipt.storedFilename, 5 * 60)
+            if (!url) return res.status(404).json({ message: 'Receipt file not found' })
+            return res.redirect(302, url)
+        }
+        const localFile = storage.localPath(receipt.storedFilename)
+        if (!localFile || !(await storage.exists(receipt.storedFilename))) {
+            return res.status(404).json({ message: 'Receipt file not found' })
+        }
+        res.setHeader('Content-Type', receipt.mimeType)
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(receipt.originalFilename)}"`)
+        return res.sendFile(localFile)
+    }
+
+    // Legado (disco do container). basename impede path traversal mesmo com storedFilename adulterado.
+    const filename = path.basename(receipt.storedFilename)
+    const candidates = [path.join(receiptUploadsDir, filename), path.join(legacyReceiptUploadsDir, filename)]
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate))
+    if (!filePath) {
+        return res.status(404).json({ message: 'Receipt file not found' })
+    }
+
+    res.setHeader('Content-Type', receipt.mimeType)
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(receipt.originalFilename)}"`)
+    return res.sendFile(filePath)
 })
 
 internalRouter.patch('/licensing/receipts/:receiptId/analyze', async (req, res) => {
@@ -620,6 +718,13 @@ internalRouter.post('/licensing/receipts/:receiptId/approve-and-activate', async
                 reviewedAt: true,
                 updatedAt: true
             }
+        })
+
+        await syncOwnedWorkspaceLicense(tx, receipt.userId, {
+            planTier: parsed.data.planTier,
+            billingStatus: parsed.data.billingStatus,
+            licensePolicy: parsed.data.licensePolicy,
+            licensePolicyNote: parsed.data.licensePolicyNote
         })
 
         const updatedUser = await tx.user.update({

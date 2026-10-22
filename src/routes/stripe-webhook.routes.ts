@@ -1,25 +1,43 @@
 import { Router, raw } from 'express'
-import Stripe from 'stripe'
+import type Stripe from 'stripe'
 import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
-import { mapBillingStatus, mapPlanTier } from '../lib/billing.js'
-
-const stripe = new Stripe(env.STRIPE_SECRET_KEY)
+import { getStripe } from '../lib/stripe.js'
+import { syncStripeCustomer } from '../services/stripe-billing.service.js'
 
 export const stripeWebhookRouter = Router()
 
-async function updateBillingByCustomerId(
-    customerId: string,
-    data: {
-        stripeSubscriptionId?: string | null
-        billingStatus?: 'INACTIVE' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED'
-        planTier?: 'FREE' | 'STARTER' | 'PRO' | 'AGENCY'
+/** Eventos que podem mudar o plano. Todos levam à mesma sincronização do cliente. */
+export const HANDLED_STRIPE_EVENTS = [
+    'checkout.session.completed',
+    'checkout.session.async_payment_succeeded',
+    'checkout.session.async_payment_failed',
+    'customer.subscription.created',
+    'customer.subscription.updated',
+    'customer.subscription.deleted',
+    'customer.subscription.paused',
+    'customer.subscription.resumed',
+    'invoice.paid',
+    'invoice.payment_failed'
+] as const
+
+function customerOf(object: { customer?: string | Stripe.Customer | Stripe.DeletedCustomer | null }) {
+    const customer = object.customer
+    if (!customer) return null
+    return typeof customer === 'string' ? customer : customer.id
+}
+
+/** Registro dos avisos recebidos (painel Ops). Nunca derruba o webhook. */
+async function logStripeEvent(event: Stripe.Event, customerId: string | null, outcome: string, error?: string) {
+    const data = { type: event.type, customerId, outcome, error: error?.slice(0, 500) ?? null, receivedAt: new Date() }
+    await prisma.stripeEventLog
+        .upsert({ where: { id: event.id }, create: { id: event.id, ...data }, update: data })
+        .catch((err) => console.error('[stripe-webhook] falha ao registrar evento', err))
+    // Guarda só os últimos 90 dias (limpeza ocasional, sem job próprio).
+    if (Math.random() < 0.02) {
+        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+        await prisma.stripeEventLog.deleteMany({ where: { receivedAt: { lt: cutoff } } }).catch(() => undefined)
     }
-) {
-    await prisma.user.updateMany({
-        where: { stripeCustomerId: customerId },
-        data
-    })
 }
 
 stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res) => {
@@ -32,82 +50,37 @@ stripeWebhookRouter.post('/', raw({ type: 'application/json' }), async (req, res
     let event: Stripe.Event
 
     try {
-        event = stripe.webhooks.constructEvent(
-            req.body as Buffer,
-            signature,
-            env.STRIPE_WEBHOOK_SECRET
-        )
+        event = getStripe().webhooks.constructEvent(req.body as Buffer, signature, env.STRIPE_WEBHOOK_SECRET)
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Invalid webhook signature'
         return res.status(400).json({ message })
     }
 
-    switch (event.type) {
-        case 'checkout.session.completed': {
-            const session = event.data.object as Stripe.Checkout.Session
-            const customerId = typeof session.customer === 'string' ? session.customer : null
+    const object = event.data.object as { customer?: string | Stripe.Customer | Stripe.DeletedCustomer | null }
+    const customerId = customerOf(object)
 
-            if (customerId) {
-                const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-                    expand: ['line_items']
-                })
-                const firstPriceId = fullSession.line_items?.data?.[0]?.price?.id ?? null
-
-                await updateBillingByCustomerId(customerId, {
-                    stripeSubscriptionId:
-                        typeof session.subscription === 'string' ? session.subscription : null,
-                    billingStatus: 'ACTIVE',
-                    planTier: mapPlanTier(firstPriceId)
-                })
-            }
-            break
-        }
-        case 'customer.subscription.created': {
-            const subscription = event.data.object as Stripe.Subscription
-            const customerId = typeof subscription.customer === 'string' ? subscription.customer : null
-            const firstPriceId = subscription.items.data[0]?.price?.id ?? null
-
-            if (customerId) {
-                await updateBillingByCustomerId(customerId, {
-                    stripeSubscriptionId: subscription.id,
-                    billingStatus: 'ACTIVE',
-                    planTier: mapPlanTier(firstPriceId)
-                })
-            }
-            break
-        }
-        case 'customer.subscription.updated': {
-            const subscription = event.data.object as Stripe.Subscription
-            const customerId = typeof subscription.customer === 'string' ? subscription.customer : null
-            const firstPriceId = subscription.items.data[0]?.price?.id ?? null
-
-            if (customerId) {
-                const billingStatus = mapBillingStatus(subscription.status)
-
-                await updateBillingByCustomerId(customerId, {
-                    stripeSubscriptionId: subscription.id,
-                    billingStatus,
-                    planTier: mapPlanTier(firstPriceId)
-                })
-            }
-            break
-        }
-        case 'customer.subscription.deleted': {
-            const subscription = event.data.object as Stripe.Subscription
-            const customerId = typeof subscription.customer === 'string' ? subscription.customer : null
-
-            if (customerId) {
-                await updateBillingByCustomerId(customerId, {
-                    stripeSubscriptionId: null,
-                    billingStatus: 'CANCELED',
-                    planTier: 'FREE'
-                })
-            }
-            break
-        }
-        default:
-            break
+    if (!(HANDLED_STRIPE_EVENTS as readonly string[]).includes(event.type) || !customerId) {
+        await logStripeEvent(event, customerId, 'ignored')
+        return res.status(200).json({ received: true, ignored: true })
     }
 
+    try {
+        // Checkout concluído antes de o cliente ficar salvo no workspace: liga pelo workspaceId da sessão.
+        if (event.type.startsWith('checkout.session.')) {
+            const session = event.data.object as Stripe.Checkout.Session
+            const workspaceId = session.client_reference_id ?? session.metadata?.workspaceId
+            if (workspaceId) {
+                await prisma.workspace.updateMany({ where: { id: workspaceId, stripeCustomerId: null }, data: { stripeCustomerId: customerId } })
+            }
+        }
+
+        // Estado lido do Stripe na hora: eventos fora de ordem ou repetidos dão o mesmo resultado.
+        const synced = await syncStripeCustomer(customerId)
+        await logStripeEvent(event, customerId, synced ? 'synced' : 'unknown_customer')
+    } catch (error) {
+        await logStripeEvent(event, customerId, 'error', error instanceof Error ? error.message : String(error))
+        // Responde 500 para o Stripe reenviar.
+        throw error
+    }
     return res.status(200).json({ received: true })
 })

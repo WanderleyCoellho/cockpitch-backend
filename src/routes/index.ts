@@ -10,13 +10,24 @@ import { proposalViewRouter } from './proposal-view.routes.js'
 import { stripeRouter } from './stripe.routes.js'
 import { uploadRouter } from './upload.routes.js'
 import { internalRouter } from './internal.routes.js'
+import { opsRouter } from './ops.routes.js'
 import { paymentReceiptRouter } from './payment-receipt.routes.js'
 import { opsAuthRouter } from './ops-auth.routes.js'
+import { workspaceRouter } from './workspace.routes.js'
+import { inviteRouter } from './invite.routes.js'
+import { templateRouter } from './template.routes.js'
+import { blockLibraryRouter } from './block-library.routes.js'
+import { profileRouter } from './profile.routes.js'
 
 export const apiRouter = Router()
 
 apiRouter.use('/auth', authRouter)
 apiRouter.use('/ops-auth', opsAuthRouter)
+apiRouter.use('/workspaces', workspaceRouter)
+apiRouter.use('/invites', inviteRouter)
+apiRouter.use('/templates', templateRouter)
+apiRouter.use('/block-library', blockLibraryRouter)
+apiRouter.use('/me', profileRouter)
 apiRouter.use('/providers', providerRouter)
 apiRouter.use('/packages', packageRouter)
 apiRouter.use('/package-items', packageItemRouter)
@@ -27,4 +38,5 @@ apiRouter.use(uploadRouter)
 apiRouter.use('/payment-receipts', paymentReceiptRouter)
 apiRouter.use(healthRouter)
 apiRouter.use(stripeRouter)
+apiRouter.use('/internal/ops', opsRouter)
 apiRouter.use('/internal', internalRouter)

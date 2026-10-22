@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
+import { sanitizeRichText } from '../lib/sanitizeHtml.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
+import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 
 const mediaItemSchema = z.object({
     url: z.string().url(),
@@ -21,7 +23,8 @@ const createProviderSchema = z.object({
     shortDescription: z.string().optional(),
     aboutTitle: z.string().optional(),
     aboutSubtitle: z.string().optional(),
-    aboutText: z.string().optional(),
+    // Único campo renderizado como HTML na página pública: sanitizado na escrita.
+    aboutText: z.string().max(20000).transform(sanitizeRichText).optional(),
     styleText: z.string().optional(),
     heroVideoUrl: z.string().url().optional().or(z.literal('')),
     deliveryTimes: z.string().optional(),
@@ -49,7 +52,7 @@ function toNullableJsonInput(value: unknown) {
     return value as Prisma.InputJsonValue
 }
 
-providerRouter.use(requireAuth)
+providerRouter.use(requireAuth, requireWorkspace)
 
 providerRouter.get('/me', async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
@@ -59,7 +62,7 @@ providerRouter.get('/me', async (req: AuthenticatedRequest, res) => {
     }
 
     const providers = await prisma.provider.findMany({
-        where: { userId: auth.userId },
+        where: { workspaceId: workspaceIdOf(auth) },
         orderBy: { createdAt: 'asc' }
     })
 
@@ -77,7 +80,7 @@ providerRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
     const provider = await prisma.provider.findFirst({
         where: {
             id,
-            userId: auth.userId
+            workspaceId: workspaceIdOf(auth)
         }
     })
 
@@ -88,7 +91,7 @@ providerRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
     return res.json({ provider })
 })
 
-providerRouter.post('/', async (req: AuthenticatedRequest, res) => {
+providerRouter.post('/', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
 
     if (!auth) {
@@ -101,17 +104,17 @@ providerRouter.post('/', async (req: AuthenticatedRequest, res) => {
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`
-    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, origin)) {
+    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, req)) {
         return res.status(400).json({ message: 'logoUrl must be a trusted uploaded file URL' })
     }
-    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, origin)) {
+    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, req)) {
         return res.status(400).json({ message: 'photoUrl must be a trusted uploaded file URL' })
     }
 
     const provider = await prisma.provider.create({
         data: {
             userId: auth.userId,
+            workspaceId: workspaceIdOf(auth),
             name: parsed.data.name,
             email: parsed.data.email,
             whatsapp: parsed.data.whatsapp,
@@ -141,7 +144,7 @@ providerRouter.post('/', async (req: AuthenticatedRequest, res) => {
     return res.status(201).json({ provider })
 })
 
-providerRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
+providerRouter.patch('/:id', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
     const id = req.params.id
 
@@ -155,18 +158,17 @@ providerRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
         return res.status(400).json({ message: 'Invalid payload', issues: parsed.error.issues })
     }
 
-    const origin = `${req.protocol}://${req.get('host')}`
-    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, origin)) {
+    if (parsed.data.logoUrl && !isTrustedUploadUrl(parsed.data.logoUrl, req)) {
         return res.status(400).json({ message: 'logoUrl must be a trusted uploaded file URL' })
     }
-    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, origin)) {
+    if (parsed.data.photoUrl && !isTrustedUploadUrl(parsed.data.photoUrl, req)) {
         return res.status(400).json({ message: 'photoUrl must be a trusted uploaded file URL' })
     }
 
     const exists = await prisma.provider.findFirst({
         where: {
             id,
-            userId: auth.userId
+            workspaceId: workspaceIdOf(auth)
         }
     })
 
@@ -206,7 +208,7 @@ providerRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     return res.json({ provider })
 })
 
-providerRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
+providerRouter.delete('/:id', requireRole('ADMIN'), async (req: AuthenticatedRequest, res) => {
     const auth = req.auth
     const id = req.params.id
 
@@ -217,7 +219,7 @@ providerRouter.delete('/:id', async (req: AuthenticatedRequest, res) => {
     const exists = await prisma.provider.findFirst({
         where: {
             id,
-            userId: auth.userId
+            workspaceId: workspaceIdOf(auth)
         }
     })
 

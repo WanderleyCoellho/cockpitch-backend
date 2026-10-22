@@ -8,53 +8,198 @@ datasource db {
 }
 
 model User {
-  id                   String           @id @default(cuid())
-  email                String           @unique
-  passwordHash         String
+  id                   String            @id @default(cuid())
+  email                String            @unique
+  /// Nulo para quem só entra com Google.
+  passwordHash         String?
+  /// Identificador da conta Google (claim "sub"), quando vinculada.
+  googleSub            String?           @unique
+  /// Guia de primeiros passos: tours vistos, checklist oculto, link compartilhado (spec in-app-guidance).
+  onboarding           Json?
+  /// Assinatura salva no perfil (método + imagem ou texto) e CPF, reaproveitados ao assinar propostas.
+  savedSignature       Json?
+  cpf                  String?
   name                 String
-  role                 UserRole         @default(PROVIDER)
-  planTier             PlanTier         @default(FREE)
-  billingStatus        BillingStatus    @default(INACTIVE)
-  licensePolicy        LicensePolicy    @default(STANDARD)
+  role                 UserRole          @default(PROVIDER)
+  planTier             PlanTier          @default(FREE)
+  billingStatus        BillingStatus     @default(INACTIVE)
+  licensePolicy        LicensePolicy     @default(STANDARD)
   licensePolicyNote    String?
   stripeCustomerId     String?
   stripeSubscriptionId String?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
   providers            Provider[]
   paymentReceipts      PaymentReceipt[]
+  memberships          WorkspaceMember[]
+  invitesSent          WorkspaceInvite[] @relation("InviteSender")
+}
+
+/// Unidade de conta, cobrança e limites (empresa ou profissional autônomo).
+/// Os campos de cobrança em User ficam congelados (legado) e serão removidos depois.
+model Workspace {
+  id                   String             @id @default(cuid())
+  name                 String
+  slug                 String             @unique
+  segment              WorkspaceSegment   @default(GENERAL)
+  logoUrl              String?
+  brandColor           String?
+  locale               String             @default("pt-BR")
+  currency             String             @default("BRL")
+  planTier             PlanTier           @default(FREE)
+  billingStatus        BillingStatus      @default(INACTIVE)
+  licensePolicy        LicensePolicy      @default(STANDARD)
+  licensePolicyNote    String?
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?
+  /// Cancelamento agendado no Stripe (vale até o fim do período pago).
+  subscriptionCancelAt DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  events               WorkspaceEvent[]
+  members              WorkspaceMember[]
+  invites              WorkspaceInvite[]
+  providers            Provider[]
+  templates            ProposalTemplate[]
+  savedBlocks          SavedBlock[]
+}
+
+/// Histórico de cobrança e licença da empresa (painel Ops).
+model WorkspaceEvent {
+  id          String             @id @default(cuid())
+  workspaceId String
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        WorkspaceEventType
+  /// Detalhes do evento (plano anterior/novo, data, observação).
+  detail      Json?
+  createdAt   DateTime           @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([type, createdAt])
+}
+
+enum WorkspaceEventType {
+  SUBSCRIBED
+  PLAN_CHANGED
+  PAYMENT_FAILED
+  PAYMENT_RECOVERED
+  CANCEL_SCHEDULED
+  CANCEL_REVERTED
+  CANCELED
+  COURTESY_GRANTED
+  COURTESY_REVOKED
+  LICENSE_CHANGED
+}
+
+/// Avisos recebidos do Stripe (webhook), para o painel Ops e diagnóstico.
+model StripeEventLog {
+  /// ID do evento no Stripe (evt_...): reenvios do mesmo evento não duplicam.
+  id         String   @id
+  type       String
+  customerId String?
+  /// synced | ignored | unknown_customer | error
+  outcome    String
+  error      String?
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
+}
+
+/// Modelo de proposta salvo por uma empresa (os modelos do sistema ficam no código).
+model ProposalTemplate {
+  id          String           @id @default(cuid())
+  workspaceId String
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  segment     WorkspaceSegment @default(GENERAL)
+  blocks      Json
+  theme       String?
+  themeCustom Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([workspaceId])
+}
+
+/// Bloco salvo na biblioteca da empresa (Profissional/Equipe), compartilhado com a equipe.
+model SavedBlock {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  type        String
+  block       Json
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
+}
+
+model WorkspaceMember {
+  id               String        @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role             WorkspaceRole @default(MEMBER)
+  /// Preferências de e-mail desta pessoa nesta empresa.
+  notifyOnOpen     Boolean       @default(true)
+  notifyOnResponse Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model WorkspaceInvite {
+  id          String        @id @default(cuid())
+  workspaceId String
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  role        WorkspaceRole @default(MEMBER)
+  tokenHash   String        @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String?
+  invitedBy   User?         @relation("InviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+
+  @@index([workspaceId])
 }
 
 model PaymentReceipt {
-  id                    String            @id @default(cuid())
-  userId                String
-  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fileUrl               String
-  storedFilename        String
-  originalFilename      String
-  mimeType              String
-  status                ReceiptStatus     @default(SUBMITTED)
-  riskLevel             ReceiptRiskLevel  @default(MEDIUM)
-  analysisSummary       String?
-  extractedText         String?
-  detectedAmount        String?
-  detectedTransferDate  String?
-  payerName             String?
-  recipientName         String?
-  reviewerName          String?
-  reviewerNotes         String?
-  reviewedAt            DateTime?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  id                   String           @id @default(cuid())
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileUrl              String
+  storedFilename       String
+  originalFilename     String
+  mimeType             String
+  status               ReceiptStatus    @default(SUBMITTED)
+  riskLevel            ReceiptRiskLevel @default(MEDIUM)
+  analysisSummary      String?
+  extractedText        String?
+  detectedAmount       String?
+  detectedTransferDate String?
+  payerName            String?
+  recipientName        String?
+  reviewerName         String?
+  reviewerNotes        String?
+  reviewedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   @@index([userId])
   @@index([status])
 }
 
 model Provider {
-  id                  String      @id @default(cuid())
+  id                  String     @id @default(cuid())
   userId              String
-  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId         String?
+  workspace           Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name                String
   email               String
   whatsapp            String?
@@ -76,76 +221,188 @@ model Provider {
   differentialsMedia  Json?
   aboutPortfolioMedia Json?
   partners            Json?
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
   packages            Package[]
   proposals           Proposal[]
   packageLabel        String?
   contactInfo         Json?
 
   @@index([userId])
+  @@index([workspaceId])
 }
 
 model Package {
-  id             String        @id @default(cuid())
-  providerId     String
-  provider       Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  price          String
-  isHighlighted  Boolean       @default(false)
-  highlightLabel String?
-  highlightColor String?
-  order          Int           @default(0)
-  mediaUrl       String?
-  mediaType      String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  items          PackageItem[]
-  proposals      Proposal[]    @relation("ProposalPackages")
+  id              String           @id @default(cuid())
+  providerId      String
+  provider        Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  /// Legado/exibição: total calculado em reais ("3500.00"), mantido pelo servidor a cada alteração.
+  price           String
+  priceMode       PackagePriceMode @default(FIXED)
+  /// Valor fixo em centavos (priceMode = FIXED).
+  fixedPriceCents Int?
+  discountType    DiscountType     @default(NONE)
+  /// PERCENT: pontos-base (1000 = 10%). AMOUNT: centavos.
+  discountValue   Int              @default(0)
+  /// Texto opcional exibido junto ao preço (ex.: "a partir de", "por pessoa").
+  priceLabel      String?
+  isHighlighted   Boolean          @default(false)
+  highlightLabel  String?
+  highlightColor  String?
+  order           Int              @default(0)
+  mediaUrl        String?
+  mediaType       String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  items           PackageItem[]
+  proposals       Proposal[]       @relation("ProposalPackages")
 
   @@index([providerId])
 }
 
 model PackageItem {
-  id         String   @id @default(cuid())
-  packageId  String
-  package    Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  name       String
-  isCourtesy Boolean  @default(false)
-  order      Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String          @id @default(cuid())
+  packageId      String
+  package        Package         @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  /// Legado: espelho de kind = COURTESY.
+  isCourtesy     Boolean         @default(false)
+  kind           PackageItemKind @default(INCLUDED)
+  quantity       Decimal         @default(1) @db.Decimal(12, 2)
+  /// Unidade exibida (ex.: "h", "un", "diária").
+  unit           String?
+  unitPriceCents Int             @default(0)
+  order          Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([packageId])
 }
 
 model Proposal {
-  id                  String            @id @default(cuid())
-  providerId          String
-  provider            Provider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  clientName          String
-  slug                String            @unique
-  serviceDate         String?
-  validityDays        Int               @default(30)
-  status              ProposalStatus    @default(ABERTA)
-  commercialStatus    CommercialStatus  @default(SEM_RESPOSTA)
-  heroVideoUrl        String?
-  weddingPhotoUrl     String?
-  theme               String?           @default("dark_luxury")
-  themeCustom         Json?
-  sections            Json?
-  backstageMedia      Json?
-  differentialsMedia  Json?
-  videoSoundEnabled   Boolean           @default(false)
-  sectionsConfig      Json?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  packageIds          Package[]         @relation("ProposalPackages")
-  views               ProposalView[]
+  id                 String              @id @default(cuid())
+  providerId         String
+  provider           Provider            @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  clientName         String
+  slug               String              @unique
+  serviceDate        String?
+  validityDays       Int                 @default(30)
+  status             ProposalStatus      @default(ABERTA)
+  commercialStatus   CommercialStatus    @default(SEM_RESPOSTA)
+  heroVideoUrl       String?
+  weddingPhotoUrl    String?
+  theme              String?             @default("dark_luxury")
+  themeCustom        Json?
+  sections           Json?
+  backstageMedia     Json?
+  differentialsMedia Json?
+  videoSoundEnabled  Boolean             @default(false)
+  sectionsConfig     Json?
+  /// Proposta em blocos (spec 003). Nulo = proposta antiga, exibida com o layout legado.
+  blocks             Json?
+  blocksVersion      Int                 @default(1)
+  /// Modelo usado na criação (sys-* do sistema ou id de ProposalTemplate).
+  templateId         String?
+  /// Quando o link foi copiado/compartilhado pelo painel (conta como "enviada" no Analytics).
+  sharedAt           DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  packageIds         Package[]           @relation("ProposalPackages")
+  views              ProposalView[]
+  responses          ProposalResponse[]
+  signatures         ProposalSignature[]
 
   @@index([providerId])
   @@index([slug])
+}
+
+/// Resposta do cliente na página pública (spec proposal-online-acceptance). Evidência imutável.
+model ProposalResponse {
+  id             String               @id @default(cuid())
+  proposalId     String
+  proposal       Proposal             @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  type           ProposalResponseType
+  signerName     String
+  signerEmail    String
+  signerDocument String?
+  message        String?
+  /// Pacote e opcionais escolhidos, com nomes e valores no momento da resposta.
+  selection      Json?
+  /// Total calculado no servidor no momento da resposta (centavos).
+  totalCents     Int?
+  /// SHA-256 do conteúdo exibido (blocos + pacotes) + seleção.
+  contentHash    String
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime             @default(now())
+
+  @@index([proposalId, createdAt])
+}
+
+/// Assinatura eletrônica da proposta: da empresa (ao publicar) e do cliente (no aceite).
+/// Evidências: CPF, e-mail confirmado por código, IP, navegador, data e o código (SHA-256) do conteúdo assinado.
+model ProposalSignature {
+  id              String          @id @default(cuid())
+  proposalId      String
+  proposal        Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  role            SignatureRole
+  /// Quem assinou pela empresa (nulo para o cliente).
+  userId          String?
+  /// Aceite do cliente ao qual a assinatura pertence.
+  responseId      String?         @unique
+  signerName      String
+  signerEmail     String
+  /// CPF só com dígitos.
+  signerDocument  String
+  signerTitle     String?
+  method          SignatureMethod
+  /// PNG em data URL (assinatura desenhada).
+  image           String?
+  /// Nome digitado (assinatura gerada em fonte manuscrita).
+  typedText       String?
+  /// SHA-256 do conteúdo no momento da assinatura (empresa: blocos + pacotes; cliente: + escolha).
+  contentHash     String
+  emailVerifiedAt DateTime
+  ip              String?
+  userAgent       String?
+  createdAt       DateTime        @default(now())
+
+  @@index([proposalId, role, createdAt])
+}
+
+/// Código de 6 dígitos enviado por e-mail para confirmar quem assina. Guardado só como hash.
+model SignatureCode {
+  id         String        @id @default(cuid())
+  proposalId String
+  role       SignatureRole
+  email      String
+  codeHash   String
+  attempts   Int           @default(0)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  ip         String?
+  createdAt  DateTime      @default(now())
+
+  @@index([proposalId, email, createdAt])
+}
+
+enum SignatureRole {
+  PROVIDER
+  CLIENT
+}
+
+enum SignatureMethod {
+  DRAWN
+  TYPED
+}
+
+enum ProposalResponseType {
+  ACCEPTED
+  DECLINED
+  CHANGE_REQUESTED
 }
 
 model ProposalView {
@@ -164,6 +421,42 @@ enum UserRole {
   PROVIDER
   CUSTOMER
   ADMIN
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum WorkspaceSegment {
+  PHOTO_VIDEO
+  EVENTS
+  AGENCY
+  CONSULTING
+  HEALTH_BEAUTY
+  CONSTRUCTION
+  EDUCATION
+  TECH
+  GENERAL
+}
+
+enum PackagePriceMode {
+  SUM_OF_ITEMS
+  FIXED
+  ON_REQUEST
+}
+
+enum DiscountType {
+  NONE
+  PERCENT
+  AMOUNT
+}
+
+enum PackageItemKind {
+  INCLUDED
+  OPTIONAL
+  COURTESY
 }
 
 enum ProposalStatus {
@@ -212,4 +505,28 @@ enum ReceiptRiskLevel {
   LOW
   MEDIUM
   HIGH
+}
+
+/// Fila de e-mails (spec email-notifications): gravada na mesma transação do evento e enviada por um job com retry.
+model EmailOutbox {
+  id            String      @id @default(cuid())
+  to            String
+  template      String
+  payload       Json
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  lastError     String?
+  /// Impede e-mails repetidos para o mesmo evento e destinatário.
+  dedupeKey     String      @unique
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([status, nextAttemptAt])
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
 }

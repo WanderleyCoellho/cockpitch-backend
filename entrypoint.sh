@@ -9,4 +9,4 @@ npx prisma migrate deploy
 echo "Iniciando a aplicação..."
 # O 'exec' garante que o processo do Node assuma o controle do contêiner, 
 # o que é uma boa prática para o Railway gerenciar a memória e o encerramento correto.
-exec npm run start
+exec node dist/server.js

@@ -1,9 +1,13 @@
 import { Router, type Request, type Response } from 'express'
 import multer from 'multer'
-import path from 'path'
 import fs from 'fs'
 import { fileTypeFromFile } from 'file-type'
 import { requireAuth } from '../middlewares/authMiddleware.js'
+import { uploadRateLimit } from '../middlewares/rateLimit.js'
+import { buildObjectKey, getStorage } from '../lib/storage/index.js'
+import { publicApiOrigin } from '../lib/publicUrl.js'
+import { removeTempFile, tempDiskStorage } from '../lib/tempUploads.js'
+import { MAX_SVG_BYTES, svgProblem } from '../lib/svg.js'
 
 const MAX_FILE_SIZE_MB = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB ?? '100')
 const MAX_FILE_SIZE_BYTES = Math.max(5, MAX_FILE_SIZE_MB) * 1024 * 1024
@@ -13,6 +17,8 @@ const EXTENSION_BY_MIME: Record<string, string> = {
     'image/png': '.png',
     'image/webp': '.webp',
     'image/gif': '.gif',
+    'image/avif': '.avif',
+    'image/svg+xml': '.svg',
     'video/mp4': '.mp4',
     'video/webm': '.webm',
     'video/quicktime': '.mov',
@@ -35,32 +41,9 @@ function isCompatibleMime(declaredMime: string, detectedMime: string) {
     return declaredMime.split('/')[0] === detectedMime.split('/')[0]
 }
 
-const uploadsDir = path.resolve(process.cwd(), 'uploads')
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true })
-}
-
-const storage = multer.diskStorage({
-    destination: (
-        _req: Request,
-        _file: Express.Multer.File,
-        cb: (error: Error | null, destination: string) => void
-    ) => cb(null, uploadsDir),
-    filename: (
-        _req: Request,
-        file: Express.Multer.File,
-        cb: (error: Error | null, filename: string) => void
-    ) => {
-        const originalExt = path.extname(file.originalname)
-        const ext = EXTENSION_BY_MIME[file.mimetype] || originalExt || '.bin'
-        const base = path.basename(file.originalname, originalExt).replace(/[^a-zA-Z0-9-_]/g, '-')
-        cb(null, `${Date.now()}-${base}${ext}`)
-    }
-})
-
 const upload = multer({
-    storage,
-    limits: { fileSize: MAX_FILE_SIZE_BYTES },
+    storage: tempDiskStorage,
+    limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
     fileFilter: (_req, file, cb) => {
         if (file.mimetype !== 'application/octet-stream' && !isMediaMime(file.mimetype)) {
             cb(new Error('Unsupported file type'))
@@ -72,45 +55,70 @@ const upload = multer({
 
 export const uploadRouter = Router()
 
-uploadRouter.post('/upload', requireAuth, (req: Request, res: Response) => {
+uploadRouter.post('/upload', requireAuth, uploadRateLimit, (req: Request, res: Response, next) => {
     upload.single('file')(req, res, async (err: unknown) => {
-        if (err instanceof multer.MulterError) {
-            if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({ message: `File too large. Max size is ${MAX_FILE_SIZE_MB}MB` })
+        try {
+            if (err instanceof multer.MulterError) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(400).json({ message: `File too large. Max size is ${MAX_FILE_SIZE_MB}MB` })
+                }
+                return res.status(400).json({ message: 'Invalid upload request' })
             }
-            return res.status(400).json({ message: 'Invalid upload request' })
-        }
 
-        if (err instanceof Error) {
-            return res.status(400).json({ message: err.message })
-        }
+            if (err instanceof Error) {
+                return res.status(400).json({ message: err.message })
+            }
 
-        if (!req.file) {
-            return res.status(400).json({ message: 'File is required' })
-        }
+            if (!req.file) {
+                return res.status(400).json({ message: 'File is required' })
+            }
 
-        const detected = await fileTypeFromFile(req.file.path)
-        if (detected && !isCompatibleMime(req.file.mimetype, detected.mime)) {
-            await fs.promises.unlink(req.file.path).catch(() => undefined)
-            return res.status(400).json({
-                message: 'File signature does not match declared media type',
-                declaredMime: req.file.mimetype,
-                detectedMime: detected.mime
+            // A extensão e o Content-Type gravados vêm da assinatura real do arquivo, não do que o cliente declarou.
+            let detected: { mime: string; ext: string } | undefined = await fileTypeFromFile(req.file.path)
+            const declaredSvg = req.file.mimetype === 'image/svg+xml' || /\.svg$/i.test(req.file.originalname)
+            // file-type não reconhece SVG (ou o vê como XML genérico).
+            const svgCandidate = declaredSvg && (!detected || detected.mime === 'application/xml')
+            if (svgCandidate) {
+                // SVG não tem assinatura binária: valida o conteúdo (logo sem script nem links externos).
+                if (req.file.size > MAX_SVG_BYTES) {
+                    return res.status(400).json({ message: 'SVG muito grande (máximo 2 MB).' })
+                }
+                const problem = svgProblem(await fs.promises.readFile(req.file.path, 'utf8'))
+                if (problem) return res.status(400).json({ message: problem, code: 'UNSAFE_SVG' })
+                detected = { mime: 'image/svg+xml', ext: 'svg' }
+            }
+            if (!detected || (!svgCandidate && !isCompatibleMime(req.file.mimetype, detected.mime))) {
+                return res.status(400).json({
+                    message: 'File signature does not match declared media type',
+                    declaredMime: req.file.mimetype,
+                    detectedMime: detected?.mime ?? null
+                })
+            }
+
+            const key = buildObjectKey({
+                visibility: 'public',
+                folder: 'media',
+                originalName: req.file.originalname,
+                extension: EXTENSION_BY_MIME[detected.mime] ?? `.${detected.ext}`
             })
+
+            try {
+                await getStorage().put({
+                    key,
+                    body: fs.createReadStream(req.file.path),
+                    contentType: detected.mime,
+                    contentLength: req.file.size
+                })
+            } catch (storageError) {
+                console.error('[upload] storage put failed', storageError)
+                return res.status(502).json({ message: 'Não foi possível salvar o arquivo agora. Tente novamente.' })
+            }
+
+            return res.status(201).json({ file_url: `${publicApiOrigin(req)}/media/${key}` })
+        } catch (error) {
+            return next(error)
+        } finally {
+            await removeTempFile(req.file?.path)
         }
-
-        if (!detected && !isMediaMime(req.file.mimetype)) {
-            await fs.promises.unlink(req.file.path).catch(() => undefined)
-            return res.status(400).json({
-                message: 'Could not validate file signature for non-media content',
-                declaredMime: req.file.mimetype,
-                detectedMime: null
-            })
-        }
-
-        const origin = `${req.protocol}://${req.get('host')}`
-        const fileUrl = `${origin}/uploads/${req.file.filename}`
-
-        return res.status(201).json({ file_url: fileUrl })
     })
 })

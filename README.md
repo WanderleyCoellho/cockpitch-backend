@@ -1,36 +1,78 @@
-# Cockpitch Backend
+# Lumen Deal — Backend
 
-Backend oficial do Cockpitch.
+Backend oficial do **Lumen Deal**, plataforma de propostas comerciais interativas da Lumen Dev Studios.
 
 ## Stack
 
-- Node.js + Express + TypeScript
+- Node.js 20 + Express 5 + TypeScript
 - Prisma + PostgreSQL
-- Stripe
+- Stripe (assinaturas) + licenciamento manual por comprovante
+- Vitest + Supertest (testes de integração com Postgres real)
 
 ## Scripts
 
-- npm run dev
-- npm run build
-- npm run typecheck
-- npm run prisma:generate
-- npm run prisma:migrate
+- `npm run dev` — API com reload
+- `npm run build` / `npm start`
+- `npm run typecheck`
+- `npm test` — precisa de um Postgres em `DATABASE_URL` (padrão: `postgresql://postgres:postgres@localhost:5432/lumen_deal_test`); as migrações são aplicadas automaticamente
+- `npm run prisma:generate` / `npm run prisma:migrate`
+- Teste de integração do S3 (opcional): `pip install "moto[server]" && moto_server -p 5055 &` e depois `S3_TEST_ENDPOINT=http://localhost:5055 npm test`
 
-## Setup rapido
+## Arquivos (storage)
 
-1. Copie .env.example para .env
-2. Ajuste DATABASE_URL, JWT_SECRET, STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET
-3. Para reconciliação de licença, configure BILLING_RECONCILIATION_ENABLED, BILLING_RECONCILIATION_CRON, BILLING_RECONCILIATION_API_KEY e BILLING_RECONCILIATION_MIN_INTERVAL_SECONDS
-4. npm install
-5. npm run prisma:migrate
-6. npm run dev
+- Produção: Railway Buckets (S3-compatível, privado). Mídia pública é servida por `GET /media/<chave>`,
+  que redireciona para uma URL assinada de 1 h; o link salvo nas propostas nunca expira.
+- Comprovantes ficam em `private/` e só abrem pela rota autenticada do Ops (URL assinada de 5 min).
+- Dev/teste: `STORAGE_DRIVER=local` grava em `storage/objects`.
+
+## Setup rápido
+
+1. `cp .env.example .env` e preencha (todas as variáveis estão documentadas lá)
+2. `npm install`
+3. `npm run prisma:migrate`
+4. `npm run dev`
+
+Banco de teste local com Docker:
+
+```bash
+docker run -d --name lumen-deal-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=lumen_deal_test -p 5432:5432 postgres:16-alpine
+npm test
+```
+
+## Deploy (Railway)
+
+- O `Dockerfile` é multi-stage: compila com todas as dependências e roda só com as de produção.
+- `entrypoint.sh` aplica `prisma migrate deploy` e inicia a API.
+- Use `GET /api/health/ready` como healthcheck (verifica o banco).
+- Configure `TRUST_PROXY=1`, `NODE_ENV=production` e os `STRIPE_PRICE_*`.
+
+## Especificações
+
+Roadmap e decisões de arquitetura em [`specs/`](specs/) — comece por
+[`specs/_context.md`](specs/_context.md) e [`specs/EXECUTAR-TODAS.md`](specs/EXECUTAR-TODAS.md).
+
+## Workspaces, papéis e planos
+
+- Cada conta é um **Workspace** (empresa ou autônomo) com membros: `OWNER` (assina o plano),
+  `ADMIN` (perfil, pacotes, equipe) e `MEMBER` (cria e edita propostas).
+- O plano, a cobrança Stripe e a cortesia pertencem ao workspace. Os limites (propostas por mês,
+  pessoas, armazenamento) são verificados no servidor (`src/services/entitlements.ts`); estourar um
+  limite responde `402 { code: "PLAN_LIMIT" }`.
+- Os campos de plano em `User` são só um espelho do workspace que a pessoa possui (usado pelo painel Ops).
 
 ## Endpoints principais
 
 - GET /api/health
+- GET /api/health/ready (banco + storage)
+- GET /media/<chave> (mídia pública)
 - POST /api/auth/register
 - POST /api/auth/login
 - GET /api/auth/me
+- GET /api/workspaces (workspaces do usuário, com papel e limites do plano)
+- GET/PATCH /api/workspaces/current (workspace ativo: header `X-Workspace-Id`, ou o mais antigo)
+- GET /api/workspaces/current/members · PATCH/DELETE /api/workspaces/current/members/:memberId
+- POST /api/workspaces/current/invites · DELETE /api/workspaces/current/invites/:inviteId
+- GET /api/invites/:token · POST /api/invites/:token/accept
 - POST /api/ops-auth/login
 - GET /api/ops-auth/me
 - POST /api/ops-auth/logout
@@ -50,17 +92,20 @@ Backend oficial do Cockpitch.
 - GET /api/internal/licensing/users
 - PATCH /api/internal/licensing/users/:userId
 - GET /api/internal/licensing/receipts
+- GET /api/internal/licensing/receipts/:receiptId/file
 - PATCH /api/internal/licensing/receipts/:receiptId/analyze
 - PATCH /api/internal/licensing/receipts/:receiptId/review
 - POST /api/internal/licensing/receipts/:receiptId/approve-and-activate
 - POST /api/internal/licensing/heartbeat
 - GET /api/internal/licensing/heartbeat
 
-Payload checkout:
+Payload checkout (o servidor resolve o preço via `STRIPE_PRICE_*`):
 
-{
-  "priceId": "price_xxx"
-}
+```json
+{ "planTier": "PRO" }
+```
+
+Resposta: `{ "sessionId": "cs_...", "url": "https://checkout.stripe.com/..." }`. Redirecione para `url`.
 
 Endpoint interno de reconciliação manual:
 
