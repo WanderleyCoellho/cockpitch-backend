@@ -1,16 +1,17 @@
 /**
  * SVG é texto e pode carregar script. Só aceitamos logos/ilustrações "puras": sem script, eventos,
- * links externos, <foreignObject>, entidades XML ou CSS que busque recurso de fora.
+ * links externos, <foreignObject>, entidades XML ou CSS que busque recurso de fora — com ou sem prefixo
+ * de namespace (ex.: <svg:script>).
  * Recusamos em vez de "limpar", para não salvar um arquivo diferente do que a pessoa enviou.
  */
 export const MAX_SVG_BYTES = 2 * 1024 * 1024
 
 const FORBIDDEN: Array<[RegExp, string]> = [
-    [/<script[\s>/]/i, 'script'],
+    [/<(?:[a-z_][\w.-]*:)?script[\s>/]/i, 'script'],
     [/\son[a-z]+\s*=/i, 'evento (on...)'],
     [/javascript\s*:/i, 'javascript:'],
-    [/<foreignObject[\s>/]/i, 'foreignObject'],
-    [/<(iframe|embed|object|audio|video|link|meta|base|use)[\s>/]/i, 'elemento externo'],
+    [/<(?:[a-z_][\w.-]*:)?foreignObject[\s>/]/i, 'foreignObject'],
+    [/<(?:[a-z_][\w.-]*:)?(iframe|embed|object|audio|video|link|meta|base|use)[\s>/]/i, 'elemento externo'],
     [/<!ENTITY/i, 'entidade XML'],
     [/@import/i, '@import'],
     // href/xlink:href só para âncoras internas (#id) ou imagem embutida (data:image/...).

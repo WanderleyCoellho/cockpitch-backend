@@ -61,6 +61,9 @@ describe('upload de mídia', () => {
         expect((await send('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')).status).toBe(400)
         expect((await send('<svg xmlns="http://www.w3.org/2000/svg"><rect onload="alert(1)"/></svg>')).status).toBe(400)
         expect((await send('<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/x.png"/></svg>')).status).toBe(400)
+        // Prefixo de namespace não escapa do filtro.
+        expect((await send('<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><s:script>alert(1)</s:script></svg>')).status).toBe(400)
+        expect((await send('<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><s:foreignObject/></svg>')).status).toBe(400)
         expect((await send('<html><body>oi</body></html>')).status).toBe(400)
         // SVG disfarçado de PNG continua recusado.
         expect((await send('<svg xmlns="http://www.w3.org/2000/svg"/>', 'image/png', 'logo.png')).status).toBe(400)

@@ -175,4 +175,13 @@ describe('fila de e-mails', () => {
         expect(out.html).not.toContain('url(x)')
         expect(out.text).toContain('Ana abriu a proposta')
     })
+
+    it('confirmação do Google escapa o nome e avisa quando vai trocar a senha de uma conta existente', () => {
+        const base = { companyName: 'Lumen Deal', name: '<b>Ana</b> Souza', confirmUrl: 'https://deal.test/confirmar-conta/abc', expiresHours: 24 }
+        const linking = renderEmail('google_confirm', { ...base, linking: true })
+        expect(linking.html).not.toContain('<b>Ana</b>')
+        expect(linking.html).toContain('https://deal.test/confirmar-conta/abc')
+        expect(linking.text).toContain('a senha anterior deixa de valer')
+        expect(renderEmail('google_confirm', { ...base, linking: false }).text).not.toContain('senha anterior')
+    })
 })
