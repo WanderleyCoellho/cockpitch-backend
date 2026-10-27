@@ -176,7 +176,16 @@ export async function findValidInvite(token: string) {
 
 /** Aceita o convite: o e-mail do usuário precisa ser o convidado. Idempotente para quem já é membro. */
 export async function acceptInvite(tx: Tx, token: string, user: { id: string; email: string }) {
-    const invite = await tx.workspaceInvite.findUnique({ where: { tokenHash: hashInviteToken(token) } })
+    return claimInvite(tx, { tokenHash: hashInviteToken(token) }, user)
+}
+
+/** Mesmo aceite, pelo id (confirmação do Google guarda o id, nunca o token do convite). */
+export async function acceptInviteById(tx: Tx, inviteId: string, user: { id: string; email: string }) {
+    return claimInvite(tx, { id: inviteId }, user)
+}
+
+async function claimInvite(tx: Tx, where: Prisma.WorkspaceInviteWhereUniqueInput, user: { id: string; email: string }) {
+    const invite = await tx.workspaceInvite.findUnique({ where })
     if (!invite || invite.acceptedAt || invite.expiresAt <= new Date()) {
         throw new HttpError(404, 'Convite inválido ou expirado. Peça um novo convite a quem te convidou.', 'INVITE_INVALID')
     }

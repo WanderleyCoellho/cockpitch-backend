@@ -8,8 +8,9 @@ import { env } from '../config/env.js'
 import { verifyGoogleIdToken } from '../lib/googleIdToken.js'
 import { onboardingPatchSchema, updateOnboardingPrefs } from '../services/onboarding.service.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
-import { authRateLimit } from '../middlewares/rateLimit.js'
+import { authRateLimit, publicWriteRateLimit } from '../middlewares/rateLimit.js'
 import { acceptInvite, createWorkspaceWithOwner, findValidInvite, listUserWorkspaces } from '../services/workspace.service.js'
+import { confirmGoogleSignup, describeGoogleConfirmation, requestGoogleConfirmation } from '../services/google-signup.service.js'
 
 const segmentSchema = z.enum([
     'PHOTO_VIDEO', 'EVENTS', 'AGENCY', 'CONSULTING', 'HEALTH_BEAUTY', 'CONSTRUCTION', 'EDUCATION', 'TECH', 'GENERAL'
@@ -154,9 +155,10 @@ authRouter.get('/google/config', (_req, res) => {
 
 /**
  * Entrar ou cadastrar com Google.
- * - Conta já vinculada (googleSub) ou com o mesmo e-mail verificado: entra (e vincula).
- * - Conta nova: precisa do nome da empresa/segmento ou de um convite; senão responde 404 com os dados
- *   do Google para o app completar o cadastro.
+ * - Conta já vinculada (googleSub): entra.
+ * - Primeiro login com Google (conta com senha no mesmo e-mail ou conta nova): responde 202 e manda um link
+ *   para o e-mail; a pessoa só entra depois de abrir o link e criar a senha (POST /google/confirm/:token).
+ * - Conta nova sem nome da empresa nem convite: 404 com os dados do Google para o app completar o cadastro.
  */
 authRouter.post('/google', authRateLimit, async (req, res) => {
     const parsed = googleSchema.safeParse(req.body)
@@ -174,16 +176,9 @@ authRouter.post('/google', authRateLimit, async (req, res) => {
         throw new HttpError(403, `Este convite foi enviado para ${invite.email}. Entre com essa conta Google.`, 'INVITE_EMAIL_MISMATCH')
     }
 
-    let user =
-        (await prisma.user.findUnique({ where: { googleSub: google.sub } })) ??
-        (await prisma.user.findUnique({ where: { email: google.email } }))
+    const user = await prisma.user.findUnique({ where: { googleSub: google.sub } })
 
     if (user) {
-        // Mesmo e-mail confirmado pelo Google: vincula a conta existente (a pessoa passa a ter os dois jeitos de entrar).
-        if (user.googleSub && user.googleSub !== google.sub) {
-            throw new HttpError(409, 'Este e-mail já está ligado a outra conta Google.', 'GOOGLE_ACCOUNT_CONFLICT')
-        }
-        if (!user.googleSub) user = await prisma.user.update({ where: { id: user.id }, data: { googleSub: google.sub } })
         if (invite) {
             const already = await prisma.workspaceMember.findUnique({
                 where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId: user.id } },
@@ -198,7 +193,12 @@ authRouter.post('/google', authRateLimit, async (req, res) => {
         return res.json({ token, user: await buildSessionUser(user.id), created: false, joinedWorkspaceId: invite?.workspaceId ?? null })
     }
 
-    if (!invite && !workspaceName) {
+    const existing = await prisma.user.findUnique({ where: { email: google.email } })
+    if (existing?.googleSub) {
+        throw new HttpError(409, 'Este e-mail já está ligado a outra conta Google.', 'GOOGLE_ACCOUNT_CONFLICT')
+    }
+
+    if (!existing && !invite && !workspaceName) {
         return res.status(404).json({
             message: 'Não há conta com este Gmail. Conte o nome da sua empresa para criar a conta.',
             code: 'GOOGLE_ACCOUNT_NOT_FOUND',
@@ -206,26 +206,40 @@ authRouter.post('/google', authRateLimit, async (req, res) => {
         })
     }
 
-    const created = await prisma.$transaction(async (tx) => {
-        const createdUser = await tx.user.create({
-            data: { name: google.name, email: google.email, googleSub: google.sub, passwordHash: null, role: 'PROVIDER' }
-        })
-        if (invite) {
-            await acceptInvite(tx, inviteToken!, { id: createdUser.id, email: createdUser.email })
-        } else {
-            await createWorkspaceWithOwner(tx, {
-                userId: createdUser.id,
-                ownerName: google.name,
-                ownerEmail: google.email,
-                workspaceName: workspaceName!,
-                segment: segment ?? 'GENERAL'
-            })
-        }
-        return createdUser
+    // Primeiro login com Google: só entra depois de confirmar o e-mail e criar a senha pelo link.
+    const sent = await requestGoogleConfirmation({
+        google,
+        existingUserId: existing?.id ?? null,
+        workspaceName: existing ? undefined : workspaceName,
+        segment: existing ? undefined : segment,
+        inviteId: invite?.id
     })
+    return res.status(202).json({
+        code: 'GOOGLE_CONFIRMATION_SENT',
+        message: `Enviamos um link para ${sent.email}. Abra o e-mail para confirmar a conta e criar sua senha.`,
+        confirmationSentTo: sent.email,
+        expiresAt: sent.expiresAt
+    })
+})
 
-    const token = signAccessToken({ userId: created.id, role: created.role })
-    return res.status(201).json({ token, user: await buildSessionUser(created.id), created: true, joinedWorkspaceId: invite?.workspaceId ?? null })
+const confirmGoogleSchema = z.object({
+    password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres').max(128)
+})
+
+// Tela do link do e-mail: mostra para qual e-mail é a confirmação.
+authRouter.get('/google/confirm/:token', publicWriteRateLimit, async (req, res) => {
+    return res.json({ confirmation: await describeGoogleConfirmation(String(req.params.token)) })
+})
+
+// Confirma o e-mail, grava a senha e entra.
+authRouter.post('/google/confirm/:token', authRateLimit, async (req, res) => {
+    const parsed = confirmGoogleSchema.safeParse(req.body)
+    if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos', issues: parsed.error.issues })
+    }
+    const { user, joinedWorkspaceId } = await confirmGoogleSignup(String(req.params.token), parsed.data.password)
+    const token = signAccessToken({ userId: user.id, role: user.role })
+    return res.json({ token, user: await buildSessionUser(user.id), joinedWorkspaceId })
 })
 
 // Guia de primeiros passos: marca tour visto, oculta o checklist, registra link compartilhado.

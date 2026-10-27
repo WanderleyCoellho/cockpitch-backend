@@ -12,6 +12,13 @@ const identities: Record<string, { sub: string; email: string; name: string; ema
 /** Credenciais têm tamanho mínimo; o sufixo "x" é removido aqui. */
 export const cred = (name: string) => `${name}${'x'.repeat(30)}`
 
+/** Token do link "confirmar e criar senha" que foi para a fila de e-mail. */
+export async function confirmationToken(email: string) {
+    const { prisma } = await import('../src/lib/prisma.js')
+    const row = await prisma.emailOutbox.findFirstOrThrow({ where: { to: email, template: 'google_confirm' }, orderBy: { createdAt: 'desc' } })
+    return String((row.payload as { confirmUrl: string }).confirmUrl).split('/confirmar-conta/')[1]
+}
+
 export const verifyGoogleIdToken = vi.fn(async (credential: string) => {
     const id = identities[credential.replace(/x+$/, '')]
     if (!id) throw new HttpError(401, 'Não foi possível confirmar sua conta Google.', 'GOOGLE_TOKEN_INVALID')

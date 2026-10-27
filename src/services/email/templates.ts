@@ -41,6 +41,8 @@ export type EmailTemplates = {
         expiresMinutes: number
     }
     team_invite: Brand & { inviterName?: string | null; role: 'OWNER' | 'ADMIN' | 'MEMBER'; inviteUrl: string; expiresAt: string }
+    /** Primeiro login com Google: confirmar o e-mail e criar a senha. `linking` = já existia conta com senha. */
+    google_confirm: Brand & { name: string; confirmUrl: string; expiresHours: number; linking: boolean }
 }
 
 export type TemplateName = keyof EmailTemplates
@@ -208,6 +210,29 @@ export function renderEmail<T extends TemplateName>(template: T, payload: EmailT
                     { label: 'Aceitar convite', url: p.inviteUrl }
                 ),
                 text: `${by} para entrar na equipe ${p.companyName} como ${ROLE_LABEL[p.role]}.\nAceite até ${until}: ${p.inviteUrl}`
+            }
+        }
+        case 'google_confirm': {
+            const p = payload as EmailTemplates['google_confirm']
+            const linkingText =
+                'Já existe uma conta com este e-mail. Ao criar a senha, a senha anterior deixa de valer e quem estiver conectado nela precisa entrar de novo.'
+            return {
+                subject: 'Confirme seu e-mail e crie sua senha no Lumen Deal',
+                html: layout(
+                    p,
+                    `<p style="margin:0 0 12px">Olá, ${esc(p.name.split(' ')[0])}! Para terminar de entrar com Google, confirme que este e-mail é seu e crie uma senha.</p>
+                     ${p.linking ? `<p style="margin:0 0 12px">${esc(linkingText)}</p>` : ''}
+                     <p style="margin:0;color:#5c5850">Depois disso você entra com Google ou com e-mail e senha. O link vale por ${p.expiresHours} horas. Se não foi você, ignore este e-mail.</p>`,
+                    { label: 'Confirmar e criar senha', url: p.confirmUrl }
+                ),
+                text: [
+                    `Olá, ${p.name}! Para terminar de entrar com Google, confirme que este e-mail é seu e crie uma senha.`,
+                    p.linking ? linkingText : '',
+                    `Confirmar e criar senha (vale por ${p.expiresHours} horas): ${p.confirmUrl}`,
+                    'Se não foi você, ignore este e-mail.'
+                ]
+                    .filter(Boolean)
+                    .join('\n\n')
             }
         }
     }
