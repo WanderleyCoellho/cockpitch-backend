@@ -33,9 +33,14 @@ export function mapPlanTier(priceId?: string | null): PaidPlanTier | null {
     return match ? match[0] : null
 }
 
+/**
+ * `past_due` = o Stripe ainda está tentando cobrar: mantém o plano durante as novas tentativas.
+ * `unpaid` = as tentativas acabaram e a fatura ficou em aberto: sem acesso ao plano pago até pagar
+ * (senão, com o Stripe configurado para "marcar como não paga", o plano seguiria liberado para sempre).
+ */
 export function mapBillingStatus(stripeStatus: Stripe.Subscription.Status): AppBillingStatus {
     if (stripeStatus === 'active' || stripeStatus === 'trialing') return 'ACTIVE'
-    if (stripeStatus === 'past_due' || stripeStatus === 'unpaid') return 'PAST_DUE'
+    if (stripeStatus === 'past_due') return 'PAST_DUE'
     if (stripeStatus === 'canceled') return 'CANCELED'
     return 'INACTIVE'
 }
