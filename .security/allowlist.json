@@ -1,0 +1,57 @@
+[
+  {
+    "id": "npm:uuid@8.3.2:GHSA-w5hq-g745-h8pq",
+    "motivo": "Transitiva de node-cron@3; só chama uuid.v4() sem buffer (a falha é em v3/v5/v6 com buf). Sai com node-cron 4 (major).",
+    "expira": "2026-12-31"
+  },
+  {
+    "id": "npm:uuid@9.0.1:GHSA-w5hq-g745-h8pq",
+    "motivo": "Transitiva de gaxios (google-auth-library@9); só chama uuid.v4() para boundary multipart, sem buffer. Sai com google-auth-library 10 (major).",
+    "expira": "2026-12-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal:src/routes/internal.routes.ts:2de60d4f55f7",
+    "motivo": "Falso positivo: o nome vem do banco (receipt.storedFilename, não da URL) e passa por path.basename antes do join, então '../' não sai das pastas de comprovante. Rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "npm:zod@3.25.76:GHSA-mrhx-c7xc-m3w5",
+    "motivo": "Correção só no zod 4 (major, muda a API de todos os schemas). Mitigação: express.json limita o corpo a 1 MB e os schemas têm .max() nos campos de texto/listas. Migrar para zod 4 dentro do prazo.",
+    "expira": "2026-12-27"
+  },
+  {
+    "id": "npm:deepmerge-ts@7.1.5:GHSA-ggr8-5vv4-36mx",
+    "motivo": "Usado só por @prisma/config na CLI (migrate/generate), mesclando a config do próprio repositório; não recebe entrada externa. Prisma 6.19 fixa a versão; sai com Prisma 7.",
+    "expira": "2026-12-31"
+  },
+  {
+    "id": "npm:effect@3.18.4:GHSA-38f7-945m-qr2g",
+    "motivo": "Usado só por @prisma/config na CLI; a falha é perda de AsyncLocalStorage em fibers RPC concorrentes, que a CLI não usa. Prisma 6.19 fixa a versão; sai com Prisma 7.",
+    "expira": "2026-12-31"
+  },
+  {
+    "id": "semgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal:src/lib/storage/localDriver.ts:d455c557e8d1",
+    "motivo": "Falso positivo: localPath() resolve e confere que o caminho continua dentro da raiz do storage antes de usar (lança erro se sair).",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-res-sendfile.express-res-sendfile:src/routes/internal.routes.ts:3eab5304dc8b",
+    "motivo": "Falso positivo: o arquivo vem do banco (receipt.storedFilename), chave validada por isValidObjectKey ou reduzida com path.basename; rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal:src/routes/internal.routes.ts:2de60d4f55f7",
+    "motivo": "Falso positivo: o arquivo vem do banco (receipt.storedFilename), chave validada por isValidObjectKey ou reduzida com path.basename; rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-res-sendfile.express-res-sendfile:src/routes/internal.routes.ts:2173e3c3eb19",
+    "motivo": "Falso positivo: o arquivo vem do banco (receipt.storedFilename), chave validada por isValidObjectKey ou reduzida com path.basename; rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-res-sendfile.express-res-sendfile:src/routes/media.routes.ts:2173e3c3eb19",
+    "motivo": "Falso positivo: a chave passa por isValidObjectKey (sem \"..\", só caracteres seguros) e precisa começar com public/; localPath() ainda confere a raiz.",
+    "expira": "2027-01-31"
+  }
+]

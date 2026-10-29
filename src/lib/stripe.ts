@@ -10,6 +10,14 @@ export function getStripe(): Stripe {
     return client
 }
 
+/** Modo da chave configurada (sk_/rk_ live ou test). Nunca expõe a chave. */
+export function stripeMode(): 'live' | 'test' | 'unconfigured' {
+    const key = env.STRIPE_SECRET_KEY
+    if (/^(sk|rk)_live_/.test(key)) return 'live'
+    if (/^(sk|rk)_test_/.test(key)) return 'test'
+    return 'unconfigured'
+}
+
 export function setStripe(next: Stripe | null) {
     client = next
     resetStripeCatalogCache()
