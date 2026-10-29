@@ -28,5 +28,30 @@
     "id": "npm:effect@3.18.4:GHSA-38f7-945m-qr2g",
     "motivo": "Usado só por @prisma/config na CLI; a falha é perda de AsyncLocalStorage em fibers RPC concorrentes, que a CLI não usa. Prisma 6.19 fixa a versão; sai com Prisma 7.",
     "expira": "2026-12-31"
+  },
+  {
+    "id": "semgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal:src/lib/storage/localDriver.ts:d455c557e8d1",
+    "motivo": "Falso positivo: localPath() resolve e confere que o caminho continua dentro da raiz do storage antes de usar (lança erro se sair).",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-res-sendfile.express-res-sendfile:src/routes/internal.routes.ts:3eab5304dc8b",
+    "motivo": "Falso positivo: o arquivo vem do banco (receipt.storedFilename), chave validada por isValidObjectKey ou reduzida com path.basename; rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal:src/routes/internal.routes.ts:2de60d4f55f7",
+    "motivo": "Falso positivo: o arquivo vem do banco (receipt.storedFilename), chave validada por isValidObjectKey ou reduzida com path.basename; rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-res-sendfile.express-res-sendfile:src/routes/internal.routes.ts:2173e3c3eb19",
+    "motivo": "Falso positivo: o arquivo vem do banco (receipt.storedFilename), chave validada por isValidObjectKey ou reduzida com path.basename; rota exige sessão Ops.",
+    "expira": "2027-01-31"
+  },
+  {
+    "id": "semgrep:javascript.express.security.audit.express-res-sendfile.express-res-sendfile:src/routes/media.routes.ts:2173e3c3eb19",
+    "motivo": "Falso positivo: a chave passa por isValidObjectKey (sem \"..\", só caracteres seguros) e precisa começar com public/; localPath() ainda confere a raiz.",
+    "expira": "2027-01-31"
   }
 ]
