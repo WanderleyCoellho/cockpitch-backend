@@ -33,7 +33,7 @@ function isPngDataUrl(value: string) {
 }
 
 export const cpfSchema = z
-    .string({ required_error: 'Informe o CPF de quem assina' })
+    .string({ error: (issue) => (issue.input === undefined ? 'Informe o CPF de quem assina' : undefined) })
     .trim()
     .refine(isValidCpf, 'CPF inválido. Confira os números.')
     .transform(normalizeCpf)

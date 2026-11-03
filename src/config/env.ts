@@ -3,6 +3,9 @@ import { z } from 'zod'
 
 dotenv.config()
 
+// Mensagens padrão de validação em português (as próprias das rotas continuam valendo).
+z.config(z.locales.ptBR())
+
 const EnvSchema = z.object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().default(3001),
@@ -63,7 +66,7 @@ const EnvSchema = z.object({
     if (value.STORAGE_DRIVER !== 's3') return
     for (const key of ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
         if (!value[key]) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} é obrigatório quando STORAGE_DRIVER=s3` })
+            ctx.addIssue({ code: 'custom', path: [key], message: `${key} é obrigatório quando STORAGE_DRIVER=s3` })
         }
     }
 })

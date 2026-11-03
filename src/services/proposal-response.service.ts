@@ -38,7 +38,7 @@ export const responseInputSchema = z.discriminatedUnion('type', [
         signature: signatureDrawingSchema,
         code: codeSchema,
         message: z.string().trim().max(2000).optional(),
-        agreeTerms: z.literal(true, { errorMap: () => ({ message: 'É preciso concordar com as condições para aceitar.' }) })
+        agreeTerms: z.literal(true, { error: 'É preciso concordar com as condições para aceitar.' })
     }),
     z.object({
         type: z.literal('CHANGE_REQUESTED'),

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
+import { patchSchemaOf } from '../lib/zod.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
@@ -20,9 +21,7 @@ const itemFields = {
 
 const createPackageItemSchema = z.object({ packageId: z.string().cuid(), ...itemFields })
 
-const updatePackageItemSchema = z
-    .object(itemFields)
-    .partial()
+const updatePackageItemSchema = patchSchemaOf(z.object(itemFields))
     .refine((payload) => Object.keys(payload).length > 0, { message: 'At least one field is required' })
 
 /** Mantém `kind` e o legado `isCourtesy` coerentes, aceitando qualquer um dos dois. */

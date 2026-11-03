@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
+import { patchSchemaOf } from '../lib/zod.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
@@ -35,8 +36,7 @@ const createPackageWithRules = createPackageSchema.refine(percentWithinLimit, {
     path: ['discountValue']
 })
 
-const updatePackageSchema = createPackageSchema
-    .partial()
+const updatePackageSchema = patchSchemaOf(createPackageSchema)
     .refine((payload) => Object.keys(payload).length > 0, { message: 'At least one field is required' })
     .refine(percentWithinLimit, { message: 'Desconto percentual máximo é 100%', path: ['discountValue'] })
 

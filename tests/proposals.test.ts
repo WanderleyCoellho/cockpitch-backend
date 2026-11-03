@@ -136,4 +136,23 @@ describe('link da proposta e envio', () => {
         expect(res.status).toBe(200)
         expect(res.body.proposal).toMatchObject({ clientName: 'Cliente Y2', heroVideoUrl: null, weddingPhotoUrl: null, serviceDate: null })
     })
+
+    it('editar só um campo não apaga o resto (pacotes, status, validade, destaque do pacote)', async () => {
+        const a = await createUser('Ana')
+        const pkg = await createPackage(a.provider.id)
+        await request(app).patch(`/api/packages/${pkg.id}`).set('Authorization', a.auth).send({ isHighlighted: true })
+        const created = await request(app)
+            .post('/api/proposals')
+            .set('Authorization', a.auth)
+            .send({ providerId: a.provider.id, packageIds: [pkg.id], clientName: 'Cliente Z', validityDays: 15, commercialStatus: 'NEGOCIANDO' })
+        const id = created.body.proposal.id
+
+        const res = await request(app).patch(`/api/proposals/${id}`).set('Authorization', a.auth).send({ clientName: 'Cliente Z2' })
+        expect(res.status).toBe(200)
+        expect(res.body.proposal).toMatchObject({ clientName: 'Cliente Z2', validityDays: 15, status: 'ABERTA', commercialStatus: 'NEGOCIANDO' })
+        expect(res.body.proposal.packageIds).toHaveLength(1)
+
+        await request(app).patch(`/api/packages/${pkg.id}`).set('Authorization', a.auth).send({ name: 'Pacote renomeado' })
+        expect(await prisma.package.findUniqueOrThrow({ where: { id: pkg.id } })).toMatchObject({ name: 'Pacote renomeado', isHighlighted: true })
+    })
 })
