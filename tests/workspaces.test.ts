@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { app } from '../src/app.js'
 import { prisma } from '../src/lib/prisma.js'
 import { resolveEntitlements } from '../src/services/entitlements.js'
+import { signAccessToken } from '../src/lib/jwt.js'
 import { addMember, createPackage, createUser, resetDatabase } from './helpers.js'
 
 beforeEach(resetDatabase)
@@ -25,6 +26,38 @@ describe('cadastro', () => {
         expect(res.body.user.providerId).toBe(ws.providerId)
         expect(res.body.user.activeWorkspaceId).toBe(ws.id)
         expect(ws.entitlements.proposalsPerMonth).toBe(3)
+    })
+})
+
+describe('conta sem empresa', () => {
+    async function userWithoutWorkspace() {
+        const user = await prisma.user.create({ data: { name: 'Sem Empresa', email: 'sem@empresa.com', passwordHash: 'x' } })
+        return { user, auth: `Bearer ${signAccessToken({ userId: user.id, role: user.role })}` }
+    }
+
+    it('cria a própria empresa e vira dona; só uma, mesmo com cliques simultâneos', async () => {
+        const u = await userWithoutWorkspace()
+        expect((await request(app).get('/api/providers/me').set('Authorization', u.auth)).status).toBe(403)
+
+        const create = () => request(app).post('/api/workspaces').set('Authorization', u.auth).send({ name: 'Estúdio Novo', segment: 'PHOTO_VIDEO' })
+        const results = await Promise.all([create(), create()])
+        expect(results.map((r) => r.status).sort()).toEqual([201, 409])
+
+        const memberships = await prisma.workspaceMember.findMany({ where: { userId: u.user.id }, include: { workspace: true } })
+        expect(memberships).toHaveLength(1)
+        expect(memberships[0]).toMatchObject({ role: 'OWNER', workspace: { name: 'Estúdio Novo', segment: 'PHOTO_VIDEO', planTier: 'FREE' } })
+        expect((await request(app).get('/api/providers/me').set('Authorization', u.auth)).status).toBe(200)
+    })
+
+    it('quem já participa de uma empresa não cria outra (o limite do Grátis é por empresa)', async () => {
+        const owner = await createUser('Dona')
+        const member = await addMember(owner.workspace.id)
+        for (const auth of [owner.auth, member.auth]) {
+            const res = await request(app).post('/api/workspaces').set('Authorization', auth).send({ name: 'Outra Empresa' })
+            expect(res.status).toBe(409)
+            expect(res.body.code).toBe('ALREADY_IN_WORKSPACE')
+        }
+        expect((await request(app).post('/api/workspaces').send({ name: 'Sem login' })).status).toBe(401)
     })
 })
 
