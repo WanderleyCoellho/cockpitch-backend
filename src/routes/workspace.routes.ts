@@ -6,7 +6,8 @@ import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
 import { requireAuth, type AuthenticatedRequest } from '../middlewares/authMiddleware.js'
 import { requireRole, requireWorkspace, workspaceIdOf } from '../middlewares/workspaceMiddleware.js'
 import { resolveEntitlements } from '../services/entitlements.js'
-import { createInvite, getWorkspaceUsage, listUserWorkspaces } from '../services/workspace.service.js'
+import { createInvite, createWorkspaceWithOwner, getWorkspaceUsage, listUserWorkspaces } from '../services/workspace.service.js'
+import { HttpError } from '../lib/httpError.js'
 import { kickEmailDispatch } from '../services/email/outbox.js'
 import { notifyTeamInvite } from '../services/notifications.service.js'
 import { getOnboarding } from '../services/onboarding.service.js'
@@ -41,6 +42,39 @@ workspaceRouter.use(requireAuth)
 
 workspaceRouter.get('/', async (req: AuthenticatedRequest, res) => {
     return res.json({ workspaces: await listUserWorkspaces(req.auth!.userId) })
+})
+
+const createWorkspaceSchema = z.object({
+    name: z.string().trim().min(2, 'Informe o nome da empresa (ou seu nome profissional)').max(120),
+    segment: segmentSchema.default('GENERAL')
+})
+
+/**
+ * Conta sem empresa (saiu da equipe, ou conta antiga ligada ao Google): cria a sua e vira dona.
+ * Só para quem não participa de nenhuma: o limite do Grátis é por empresa, criar várias o contornaria.
+ */
+workspaceRouter.post('/', async (req: AuthenticatedRequest, res) => {
+    const parsed = createWorkspaceSchema.safeParse(req.body)
+    if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos', issues: parsed.error.issues })
+    }
+    const userId = req.auth!.userId
+    const workspace = await prisma.$transaction(async (tx) => {
+        // Trava a conta: dois cliques ao mesmo tempo não criam duas empresas.
+        const [user] = await tx.$queryRaw<Array<{ name: string; email: string }>>`SELECT name, email FROM "User" WHERE id = ${userId} FOR UPDATE`
+        if (!user) throw new HttpError(401, 'Unauthorized')
+        if (await tx.workspaceMember.count({ where: { userId } })) {
+            throw new HttpError(409, 'Você já faz parte de uma empresa.', 'ALREADY_IN_WORKSPACE')
+        }
+        return createWorkspaceWithOwner(tx, {
+            userId,
+            ownerName: user.name,
+            ownerEmail: user.email,
+            workspaceName: parsed.data.name,
+            segment: parsed.data.segment
+        })
+    })
+    return res.status(201).json({ workspaceId: workspace.id })
 })
 
 workspaceRouter.use('/current', requireWorkspace)
