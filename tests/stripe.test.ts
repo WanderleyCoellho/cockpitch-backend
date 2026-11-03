@@ -4,6 +4,7 @@ import { app } from '../src/app.js'
 import { prisma } from '../src/lib/prisma.js'
 import { ensureCatalogPrices, PLAN_CATALOG, resetStripeCatalogCache, setStripe } from '../src/lib/stripe.js'
 import { runBillingReconciliationOnce } from '../src/jobs/billingReconciliation.job.js'
+import { runStripeCutover } from '../src/services/stripe-cutover.service.js'
 import { addMember, createUser, resetDatabase } from './helpers.js'
 import { createStripeFake, signedEvent } from './stripeFake.js'
 
@@ -19,8 +20,8 @@ afterAll(() => setStripe(null))
 
 const free = { planTier: 'FREE' as const, billingStatus: 'INACTIVE' as const }
 
-async function sendWebhook(type: string, object: Record<string, unknown>) {
-    const { payload, header } = signedEvent(type, object)
+async function sendWebhook(type: string, object: Record<string, unknown>, options: { livemode?: boolean; id?: string } = {}) {
+    const { payload, header } = signedEvent(type, object, options)
     return request(app).post('/webhooks/stripe').set('stripe-signature', header).set('Content-Type', 'application/json').send(payload)
 }
 
@@ -173,6 +174,49 @@ describe('webhook', () => {
         sub.status = 'past_due'
         await sendWebhook('invoice.payment_failed', { id: 'in_2', customer: a.customerId })
         expect(await prisma.workspace.findUniqueOrThrow({ where: { id: a.workspace.id } })).toMatchObject({ planTier: 'AGENCY', billingStatus: 'PAST_DUE' })
+
+        // Tentativas esgotadas e fatura em aberto: o plano pago não fica liberado sem pagamento.
+        sub.status = 'unpaid'
+        await sendWebhook('customer.subscription.updated', { ...sub })
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: a.workspace.id } })).toMatchObject({ planTier: 'FREE', billingStatus: 'INACTIVE' })
+
+        // Pagou a fatura em aberto: volta.
+        sub.status = 'active'
+        await sendWebhook('invoice.paid', { id: 'in_3', customer: a.customerId })
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: a.workspace.id } })).toMatchObject({ planTier: 'AGENCY', billingStatus: 'ACTIVE' })
+    })
+
+    it('evento de outro modo (live com chave de teste) é ignorado sem mexer no plano', async () => {
+        const a = await subscribedWorkspace()
+        const prices = await ensureCatalogPrices()
+        fake.addSubscription(a.customerId, prices.PRO.priceId)
+        const res = await sendWebhook('invoice.paid', { id: 'in_live', customer: a.customerId }, { livemode: true, id: 'evt_live_1' })
+        expect(res.status).toBe(200)
+        expect(res.body.ignored).toBe(true)
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: a.workspace.id } })).toMatchObject(free)
+        expect(await prisma.stripeEventLog.findUniqueOrThrow({ where: { id: 'evt_live_1' } })).toMatchObject({ outcome: 'mode_mismatch' })
+    })
+
+    it('disputa, reembolso e alerta de fraude ficam no histórico da empresa (uma vez por evento)', async () => {
+        const a = await subscribedWorkspace()
+        const prices = await ensureCatalogPrices()
+        fake.addSubscription(a.customerId, prices.PRO.priceId)
+        const charge = fake.addCharge(a.customerId)
+
+        // Disputa e alerta de fraude só trazem a cobrança: o cliente vem dela.
+        const dispute = { id: 'dp_1', object: 'dispute', charge: charge.id, amount: 9900, currency: 'brl', reason: 'fraudulent' }
+        expect((await sendWebhook('charge.dispute.created', dispute, { id: 'evt_dp_1' })).status).toBe(200)
+        await sendWebhook('charge.dispute.created', dispute, { id: 'evt_dp_1' }) // reenvio do Stripe
+        await sendWebhook('radar.early_fraud_warning.created', { id: 'issfr_1', charge: charge.id, fraud_type: 'unauthorized_use_of_card' }, { id: 'evt_efw_1' })
+        await sendWebhook('charge.refunded', { ...charge, amount_refunded: 9900, refunded: true }, { id: 'evt_rf_1' })
+
+        const events = await prisma.workspaceEvent.findMany({ where: { workspaceId: a.workspace.id }, orderBy: { createdAt: 'asc' } })
+        const risk = events.filter((e) => ['PAYMENT_DISPUTED', 'FRAUD_WARNING', 'PAYMENT_REFUNDED'].includes(e.type))
+        expect(risk.map((e) => e.type)).toEqual(['PAYMENT_DISPUTED', 'FRAUD_WARNING', 'PAYMENT_REFUNDED'])
+        expect(risk[0].detail).toMatchObject({ eventId: 'evt_dp_1', chargeId: charge.id, amountCents: 9900, reason: 'fraudulent' })
+        expect(risk[2].detail).toMatchObject({ chargeId: charge.id, refundedCents: 9900, fullyRefunded: true })
+        // E a assinatura continua sincronizada pelo estado do Stripe.
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: a.workspace.id } })).toMatchObject({ planTier: 'PRO', billingStatus: 'ACTIVE' })
     })
 
     it('ignora clientes de fora do Lumen Deal e preserva cortesia', async () => {
@@ -193,5 +237,38 @@ describe('webhook', () => {
         expect(result).toMatchObject({ total: 1, updated: 1, failed: 0 })
         expect(await prisma.workspace.findUniqueOrThrow({ where: { id: a.workspace.id } })).toMatchObject({ planTier: 'STARTER' })
         expect((await runBillingReconciliationOnce()).unchanged).toBe(1)
+    })
+})
+
+describe('virada do Stripe de teste para produção', () => {
+    it('simulação não muda nada; aplicar volta ao Grátis quem só tinha cliente de teste e preserva cortesia e clientes reais', async () => {
+        const real = await createUser('Real', free)
+        await request(app).post('/api/stripe/create-checkout').set('Authorization', real.auth).send({ planTier: 'PRO' })
+        const { stripeCustomerId: realCustomer } = await prisma.workspace.findUniqueOrThrow({ where: { id: real.workspace.id } })
+        const prices = await ensureCatalogPrices()
+        fake.addSubscription(realCustomer!, prices.PRO.priceId)
+
+        // Assinou com cartão de teste: o cliente não existe com a chave atual.
+        const tester = await createUser('Teste', { planTier: 'PRO', billingStatus: 'ACTIVE' })
+        await prisma.workspace.update({ where: { id: tester.workspace.id }, data: { stripeCustomerId: 'cus_test_antigo', stripeSubscriptionId: 'sub_test_antigo' } })
+        const courtesy = await createUser('Cortesia', { planTier: 'PRO', billingStatus: 'ACTIVE', licensePolicy: 'COURTESY' })
+        await prisma.workspace.update({ where: { id: courtesy.workspace.id }, data: { stripeCustomerId: 'cus_test_cortesia' } })
+
+        const dry = await runStripeCutover({ apply: false })
+        expect(Object.fromEntries(dry.map((r) => [r.name, r.action]))).toEqual({ 'Real Ltda': 'keep', 'Teste Ltda': 'reset_to_free', 'Cortesia Ltda': 'clear_ids' })
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: tester.workspace.id } })).toMatchObject({ planTier: 'PRO', stripeCustomerId: 'cus_test_antigo' })
+
+        await runStripeCutover({ apply: true })
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: tester.workspace.id } })).toMatchObject({
+            planTier: 'FREE', billingStatus: 'INACTIVE', stripeCustomerId: null, stripeSubscriptionId: null
+        })
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: tester.user.id } })).planTier).toBe('FREE')
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: courtesy.workspace.id } })).toMatchObject({
+            planTier: 'PRO', licensePolicy: 'COURTESY', stripeCustomerId: null
+        })
+        expect(await prisma.workspace.findUniqueOrThrow({ where: { id: real.workspace.id } })).toMatchObject({ stripeCustomerId: realCustomer })
+
+        // Rodar de novo não muda mais nada.
+        expect((await runStripeCutover({ apply: true })).filter((r) => r.action !== 'keep')).toHaveLength(0)
     })
 })

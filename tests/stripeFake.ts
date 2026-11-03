@@ -13,6 +13,7 @@ export function createStripeFake() {
     const sessions = new Map<string, any>()
     const portalConfigs: any[] = []
     const portalSessions: any[] = []
+    const charges = new Map<string, any>()
     const real = new Stripe('sk_test_dummy')
 
     const fake = {
@@ -52,6 +53,12 @@ export function createStripeFake() {
             retrieve: async (cid: string) => {
                 if (!customers.has(cid)) throw notFound('customer')
                 return customers.get(cid)
+            }
+        },
+        charges: {
+            retrieve: async (chid: string) => {
+                if (!charges.has(chid)) throw notFound('charge')
+                return charges.get(chid)
             }
         },
         subscriptions: {
@@ -108,12 +115,20 @@ export function createStripeFake() {
         return sub
     }
 
-    return { stripe: fake as unknown as Stripe, products, prices, customers, subscriptions, sessions, portalConfigs, portalSessions, addSubscription }
+    /** Simula uma cobrança paga pelo cliente (disputas e alertas de fraude apontam para ela). */
+    function addCharge(customer: string, amount = 9900) {
+        const charge = { id: id('ch'), object: 'charge', customer, amount, currency: 'brl', amount_refunded: 0, refunded: false }
+        charges.set(charge.id, charge)
+        return charge
+    }
+
+    return { stripe: fake as unknown as Stripe, products, prices, customers, subscriptions, sessions, portalConfigs, portalSessions, charges, addSubscription, addCharge }
 }
 
 /** Corpo + cabeçalho assinado de um evento, como o Stripe envia. */
-export function signedEvent(type: string, object: Record<string, unknown>, secret = 'whsec_dummy') {
-    const payload = JSON.stringify({ id: `evt_${Math.random().toString(36).slice(2)}`, object: 'event', type, data: { object } })
+export function signedEvent(type: string, object: Record<string, unknown>, options: { secret?: string; livemode?: boolean; id?: string } = {}) {
+    const { secret = 'whsec_dummy', livemode = false, id = `evt_${Math.random().toString(36).slice(2)}` } = options
+    const payload = JSON.stringify({ id, object: 'event', type, livemode, data: { object } })
     const header = new Stripe('sk_test_dummy').webhooks.generateTestHeaderString({ payload, secret })
     return { payload, header }
 }

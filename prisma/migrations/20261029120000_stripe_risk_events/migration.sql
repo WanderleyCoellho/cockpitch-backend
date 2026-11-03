@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "WorkspaceEventType" ADD VALUE 'PAYMENT_DISPUTED';
+ALTER TYPE "WorkspaceEventType" ADD VALUE 'PAYMENT_REFUNDED';
+ALTER TYPE "WorkspaceEventType" ADD VALUE 'FRAUD_WARNING';

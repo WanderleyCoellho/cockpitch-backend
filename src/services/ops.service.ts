@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
-import { ensureCatalogPrices, PLAN_CATALOG } from '../lib/stripe.js'
+import { ensureCatalogPrices, PLAN_CATALOG, stripeMode } from '../lib/stripe.js'
 import { getLastReconciliation } from '../jobs/billingReconciliation.job.js'
 import { resolveEntitlements } from './entitlements.js'
 import { getWorkspaceUsage } from './workspace.service.js'
@@ -19,12 +19,7 @@ export const PAYING_WHERE: Prisma.WorkspaceWhereInput = {
 
 const PAID_TIERS = ['STARTER', 'PRO', 'AGENCY'] as const
 
-export function stripeMode(): 'live' | 'test' | 'unconfigured' {
-    const key = env.STRIPE_SECRET_KEY
-    if (/^(sk|rk)_live_/.test(key)) return 'live'
-    if (/^(sk|rk)_test_/.test(key)) return 'test'
-    return 'unconfigured'
-}
+export { stripeMode }
 
 export function stripeDashboardUrl(path: string) {
     return `https://dashboard.stripe.com/${stripeMode() === 'test' ? 'test/' : ''}${path}`

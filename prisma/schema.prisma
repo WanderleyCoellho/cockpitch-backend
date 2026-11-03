@@ -92,6 +92,10 @@ enum WorkspaceEventType {
   COURTESY_GRANTED
   COURTESY_REVOKED
   LICENSE_CHANGED
+  /// Sinais de risco vindos do Stripe (o Ops decide reembolsar ou cancelar).
+  PAYMENT_DISPUTED
+  PAYMENT_REFUNDED
+  FRAUD_WARNING
 }
 
 /// Avisos recebidos do Stripe (webhook), para o painel Ops e diagnóstico.

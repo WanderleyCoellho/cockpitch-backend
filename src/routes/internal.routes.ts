@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express'
+import { createHash, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import { env } from '../config/env.js'
 import { runBillingReconciliationOnce } from '../jobs/billingReconciliation.job.js'
@@ -95,6 +96,11 @@ function auditManualRun(payload: {
     })
 }
 
+// Compara via hash: tamanho fixo e tempo constante (a chave não vaza por medição de tempo).
+function sameSecret(given: string, expected: string) {
+    return timingSafeEqual(createHash('sha256').update(given).digest(), createHash('sha256').update(expected).digest())
+}
+
 export function ensureInternalAccess(req: Request, res: Response) {
     const header = req.headers.authorization
     const bearerToken = header && header.startsWith('Bearer ') ? header.replace('Bearer ', '').trim() : null
@@ -131,7 +137,7 @@ export function ensureInternalAccess(req: Request, res: Response) {
         }
     }
 
-    if (typeof apiKey !== 'string' || apiKey !== env.BILLING_RECONCILIATION_API_KEY) {
+    if (typeof apiKey !== 'string' || !sameSecret(apiKey, env.BILLING_RECONCILIATION_API_KEY)) {
         return {
             ok: false as const,
             response: res.status(401).json({ message: 'Unauthorized' })

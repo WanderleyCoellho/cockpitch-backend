@@ -3,7 +3,7 @@ import { env } from './config/env.js'
 import { prisma } from './lib/prisma.js'
 import { startBillingReconciliationJob } from './jobs/billingReconciliation.job.js'
 import { startEmailOutboxJob } from './jobs/emailOutbox.job.js'
-import { ensureCatalogPrices } from './lib/stripe.js'
+import { ensureCatalogPrices, stripeMode } from './lib/stripe.js'
 
 // Rede de segurança: uma promise rejeitada fora do ciclo de requisição não derruba a API inteira.
 process.on('unhandledRejection', (reason) => {
@@ -12,6 +12,10 @@ process.on('unhandledRejection', (reason) => {
 
 const server = app.listen(env.PORT, () => {
     console.log(`[api] lumen-deal-api running on port ${env.PORT}`)
+    // Modo do Stripe visível no log (nunca a chave): evita rodar produção com chave de teste sem perceber.
+    const mode = stripeMode()
+    if (env.NODE_ENV === 'production' && mode !== 'live') console.warn(`[stripe] ATENÇÃO: produção usando chave ${mode}`)
+    else console.log(`[stripe] modo ${mode}`)
     startBillingReconciliationJob()
     startEmailOutboxJob()
     // Cria (uma vez) os produtos/preços dos planos no Stripe; se a chave não estiver pronta, o checkout tenta de novo.
