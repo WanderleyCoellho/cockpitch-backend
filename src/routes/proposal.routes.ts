@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
+import { patchSchemaOf } from '../lib/zod.js'
 import { prisma } from '../lib/prisma.js'
 import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
 import { generatedProposalSlug, PUBLIC_SLUG_RE } from '../lib/slug.js'
@@ -56,7 +57,7 @@ const createProposalSchema = z.object({
     templateId: z.string().max(40).optional()
 })
 
-const updateProposalSchema = createProposalSchema.partial().refine(
+const updateProposalSchema = patchSchemaOf(createProposalSchema).refine(
     (payload) => Object.keys(payload).length > 0,
     { message: 'At least one field is required' }
 )

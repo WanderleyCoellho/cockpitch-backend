@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
+import { patchSchemaOf } from '../lib/zod.js'
 import { prisma } from '../lib/prisma.js'
 import { isTrustedUploadUrl } from '../lib/trustedUploadUrl.js'
 import { sanitizeRichText } from '../lib/sanitizeHtml.js'
@@ -39,7 +40,7 @@ const createProviderSchema = z.object({
     contactInfo: z.record(z.string(), z.any()).nullable().optional()
 })
 
-const updateProviderSchema = createProviderSchema.partial().refine(
+const updateProviderSchema = patchSchemaOf(createProviderSchema).refine(
     (payload) => Object.keys(payload).length > 0,
     { message: 'At least one field is required' }
 )
