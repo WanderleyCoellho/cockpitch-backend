@@ -1,6 +1,10 @@
 # Painel Ops (operação interna)
 
-Status: 🚧 em implementação (2026-10-08) — backend pronto; frontend em reescrita.
+Status: ✅ implementado.
+- Backend: 2026-10-08.
+- Novo painel: PR #1 do `cockpitch-admin`.
+- Histórico com sinais de risco do Stripe: PR #3, 2026-11-03.
+- Eventos de exclusão de conta: PR #4, 2026-11-04.
 
 ## Objetivo
 Painel interno da Lumen Dev Studios para acompanhar o negócio do Lumen Deal e agir rápido: receita,
@@ -24,6 +28,9 @@ assinantes, empresas, pessoas e saúde do sistema. Identidade visual do lumendev
 - **Histórico da empresa** (`WorkspaceEvent`): gravado pela sincronização com o Stripe (assinou, trocou de plano,
   pagamento falhou/voltou, cancelamento agendado/desfeito, cancelou) e pelas ações do Ops (cortesia
   concedida/retirada, licença alterada). Cancelamentos do período e receita perdida vêm daqui.
+  Também entram:
+  - sinais de risco do Stripe: contestação, reembolso e alerta de fraude;
+  - eventos da exclusão de conta do dono: `OWNERSHIP_TRANSFERRED` e `WORKSPACE_CLOSED`.
 - `Workspace.subscriptionCancelAt`: data do cancelamento agendado (o cliente cancelou, vale até o fim do período).
 - **Avisos do Stripe** (`StripeEventLog`): cada evento do webhook com o resultado (synced, ignored,
   unknown_customer, error). Guarda 90 dias.

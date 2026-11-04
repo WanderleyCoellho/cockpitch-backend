@@ -74,3 +74,10 @@ _Changelog: 2026-10-05 — backend implementado (migração aditiva com backfill
 entitlements no servidor, convites com token de uso único (hash SHA-256, 7 dias), Stripe por workspace,
 Ops por pessoa → workspace que ela possui). Decisão: os campos de licença em `User` continuam como espelho
 do workspace possuído (não congelados) até o painel Ops listar por workspace; `Provider.userId` segue como "criador"._
+
+_Changelog (revisões):_
+- 2026-11-03: conta sem nenhuma empresa (por exemplo, entrou por convite e saiu, ou a empresa foi encerrada) vê
+  `CreateWorkspacePage` e cria uma pelo `POST /api/workspaces`. Só com zero memberships, com `FOR UPDATE` no usuário;
+  senão, 409 `ALREADY_IN_WORKSPACE`.
+- 2026-11-04: troca de dono e encerramento da empresa quando o dono exclui a conta (`Workspace.closedAt`,
+  `paymentGraceUntil`; `Provider.userId` opcional). Ver `account-data-rights.md`.

@@ -1,5 +1,7 @@
 # Modelos de proposta e ordem dos blocos
 
+Status: ✅ implementado. Os modelos do sistema ficam no código e os da empresa em `ProposalTemplate` (`services/template.service.ts`, `routes/template.routes.ts`); a biblioteca de blocos fica em `block-library` (`tests/blockLibrary.test.ts`).
+
 ## Ordem recomendada
 
 capa → o momento do cliente (problema) → escopo → etapas → portfólio → equipe → depoimentos

@@ -1,5 +1,7 @@
 # Spec: Assinatura eletrônica da proposta (empresa e cliente)
 
+Status: ✅ implementado. Código em `services/signature.service.ts`, testes em `tests/signature.test.ts`. Os códigos são guardados só como hash e apagados em 2 dias (ver `lgpd-privacy.md`).
+
 ## 1. Comportamento esperado
 
 A proposta e o comprovante levam duas assinaturas: a da empresa e a do cliente.

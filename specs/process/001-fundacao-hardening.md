@@ -1,5 +1,7 @@
 # Processo: Fundação — estabilidade e segurança (Fase 0)
 
+Status: ✅ concluído em 2026-10-05 (ver `EXECUTAR-TODAS.md`). Revisão de segurança em 2026-11-03: auditoria com allowlist em `.security/allowlist.json`, zod 4 e vitest 4.
+
 ## Situação Atual
 Achados da análise de 2026-10-05:
 1. Handlers `async` sem captura no Express 4: qualquer erro do Prisma (ex.: `slug` duplicado,
