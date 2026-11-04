@@ -48,7 +48,13 @@ const EnvSchema = z.object({
         .enum(['true', 'false'])
         .default('true')
         .transform((value) => value === 'true'),
-    // Entrar com Google: Client ID do tipo "Aplicativo da Web" no Google Cloud. Vazio = botão oculto.
+    // Limpeza diária de dados vencidos (códigos, links, e-mails antigos). Horário em UTC.
+    DATA_RETENTION_ENABLED: z
+        .enum(['true', 'false'])
+        .default('true')
+        .transform((value) => value === 'true'),
+    DATA_RETENTION_CRON: z.string().default('15 6 * * *'),
+    // Entrar com Google:Client ID do tipo "Aplicativo da Web" no Google Cloud. Vazio = botão oculto.
     GOOGLE_CLIENT_ID: z.string().default(''),
     // Armazenamento de arquivos: "local" (dev/teste) ou "s3" (Railway Buckets em produção).
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),

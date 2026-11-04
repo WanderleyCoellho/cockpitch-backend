@@ -90,11 +90,7 @@ async function logStripeEvent(event: Stripe.Event, customerId: string | null, ou
     await prisma.stripeEventLog
         .upsert({ where: { id: event.id }, create: { id: event.id, ...data }, update: data })
         .catch((err) => console.error('[stripe-webhook] falha ao registrar evento', err))
-    // Guarda só os últimos 90 dias (limpeza ocasional, sem job próprio).
-    if (Math.random() < 0.02) {
-        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-        await prisma.stripeEventLog.deleteMany({ where: { receivedAt: { lt: cutoff } } }).catch(() => undefined)
-    }
+    // Os últimos 90 dias ficam; o job de retenção apaga o resto.
 }
 
 // 1 MB: um evento maior que o padrão (100 KB) seria recusado com 413 e reenviado pelo Stripe para sempre.

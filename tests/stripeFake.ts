@@ -14,6 +14,7 @@ export function createStripeFake() {
     const portalConfigs: any[] = []
     const portalSessions: any[] = []
     const charges = new Map<string, any>()
+    const paymentMethods = new Map<string, any>()
     const real = new Stripe('sk_test_dummy')
 
     const fake = {
@@ -53,6 +54,27 @@ export function createStripeFake() {
             retrieve: async (cid: string) => {
                 if (!customers.has(cid)) throw notFound('customer')
                 return customers.get(cid)
+            },
+            update: async (cid: string, params: any) => {
+                if (!customers.has(cid)) throw notFound('customer')
+                return Object.assign(customers.get(cid), params)
+            },
+            /** Como no Stripe: apagar o cliente cancela as assinaturas na hora e remove os cartões. */
+            del: async (cid: string) => {
+                if (!customers.has(cid)) throw notFound('customer')
+                customers.delete(cid)
+                for (const sub of subscriptions.values()) if (sub.customer === cid) sub.status = 'canceled'
+                for (const pm of paymentMethods.values()) if (pm.customer === cid) pm.customer = null
+                return { id: cid, object: 'customer', deleted: true }
+            },
+            listPaymentMethods: async (cid: string) => ({ data: [...paymentMethods.values()].filter((pm) => pm.customer === cid) })
+        },
+        paymentMethods: {
+            detach: async (pmid: string) => {
+                if (!paymentMethods.has(pmid)) throw notFound('payment_method')
+                const pm = paymentMethods.get(pmid)
+                pm.customer = null
+                return pm
             }
         },
         charges: {
@@ -64,7 +86,13 @@ export function createStripeFake() {
         subscriptions: {
             list: async (params: any) => ({
                 data: [...subscriptions.values()].filter((s) => s.customer === params.customer)
-            })
+            }),
+            cancel: async (sid: string) => {
+                if (!subscriptions.has(sid)) throw notFound('subscription')
+                const sub = subscriptions.get(sid)
+                sub.status = 'canceled'
+                return sub
+            }
         },
         checkout: {
             sessions: {
@@ -122,7 +150,28 @@ export function createStripeFake() {
         return charge
     }
 
-    return { stripe: fake as unknown as Stripe, products, prices, customers, subscriptions, sessions, portalConfigs, portalSessions, charges, addSubscription, addCharge }
+    /** Cartão salvo no cliente. */
+    function addPaymentMethod(customer: string) {
+        const pm = { id: id('pm'), object: 'payment_method', type: 'card', customer }
+        paymentMethods.set(pm.id, pm)
+        return pm
+    }
+
+    return {
+        stripe: fake as unknown as Stripe,
+        products,
+        prices,
+        customers,
+        subscriptions,
+        sessions,
+        portalConfigs,
+        portalSessions,
+        charges,
+        paymentMethods,
+        addSubscription,
+        addCharge,
+        addPaymentMethod
+    }
 }
 
 /** Corpo + cabeçalho assinado de um evento, como o Stripe envia. */

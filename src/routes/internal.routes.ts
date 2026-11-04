@@ -706,6 +706,11 @@ internalRouter.post('/licensing/receipts/:receiptId/approve-and-activate', async
     if (!receipt) {
         return res.status(404).json({ message: 'Receipt not found' })
     }
+    // Conta excluída: o comprovante fica guardado, mas não há mais quem ativar.
+    const owner = receipt.user
+    if (!owner) {
+        return res.status(409).json({ message: 'A conta que enviou este comprovante foi excluída.', code: 'USER_DELETED' })
+    }
 
     const result = await prisma.$transaction(async (tx) => {
         const updatedReceipt = await tx.paymentReceipt.update({
@@ -726,7 +731,7 @@ internalRouter.post('/licensing/receipts/:receiptId/approve-and-activate', async
             }
         })
 
-        await syncOwnedWorkspaceLicense(tx, receipt.userId, {
+        await syncOwnedWorkspaceLicense(tx, owner.id, {
             planTier: parsed.data.planTier,
             billingStatus: parsed.data.billingStatus,
             licensePolicy: parsed.data.licensePolicy,
@@ -734,7 +739,7 @@ internalRouter.post('/licensing/receipts/:receiptId/approve-and-activate', async
         })
 
         const updatedUser = await tx.user.update({
-            where: { id: receipt.userId },
+            where: { id: owner.id },
             data: {
                 planTier: parsed.data.planTier,
                 billingStatus: parsed.data.billingStatus,
@@ -761,10 +766,10 @@ internalRouter.post('/licensing/receipts/:receiptId/approve-and-activate', async
         receiptId: result.updatedReceipt.id,
         userId: result.updatedUser.id,
         from: {
-            planTier: receipt.user.planTier,
-            billingStatus: receipt.user.billingStatus,
-            licensePolicy: receipt.user.licensePolicy,
-            licensePolicyNote: receipt.user.licensePolicyNote
+            planTier: owner.planTier,
+            billingStatus: owner.billingStatus,
+            licensePolicy: owner.licensePolicy,
+            licensePolicyNote: owner.licensePolicyNote
         },
         to: {
             planTier: result.updatedUser.planTier,
