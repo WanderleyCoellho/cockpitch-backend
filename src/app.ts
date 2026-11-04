@@ -5,6 +5,7 @@ import path from 'path'
 import { stripeWebhookRouter } from './routes/stripe-webhook.routes.js'
 import { apiRouter } from './routes/index.js'
 import { mediaRouter } from './routes/media.routes.js'
+import { cspReportRouter } from './routes/csp-report.routes.js'
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js'
 import { env } from './config/env.js'
 
@@ -63,6 +64,9 @@ app.use(
         },
     })
 )
+// Relatórios de CSP chegam como application/csp-report: a rota tem parser e limite próprios.
+app.use('/api/csp-report', cspReportRouter)
+
 app.use(express.json({ limit: '1mb' }))
 
 app.use('/api', apiRouter)
