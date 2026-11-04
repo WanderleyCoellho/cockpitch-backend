@@ -22,6 +22,9 @@ export const publicWriteRateLimit = build(60 * 1000, 30)
 /** Ações sensíveis da própria conta (exportar dados, pedir código e excluir conta). */
 export const accountActionRateLimit = build(15 * 60 * 1000, 10)
 
+/** Relatórios de violação de CSP: uma página com problema gera alguns por carga, nunca dezenas por minuto. */
+export const cspReportRateLimit = build(60 * 1000, 20)
+
 /** Uploads autenticados: protege disco/banda contra loop de cliente. */
 export const uploadRateLimit = build(60 * 1000, 30)
 
