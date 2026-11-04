@@ -36,6 +36,21 @@ model User {
   /// Tokens emitidos antes desta data deixam de valer (troca de senha ao vincular o Google).
   sessionsValidAfter   DateTime?
   googleConfirmations  GoogleSignupConfirmation[]
+  deletionCodes        AccountDeletionCode[]
+}
+
+/// Código de 6 dígitos enviado ao e-mail para confirmar a exclusão da conta. Guardado só como hash.
+model AccountDeletionCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
 }
 
 /// Unidade de conta, cobrança e limites (empresa ou profissional autônomo).
@@ -57,6 +72,10 @@ model Workspace {
   stripeSubscriptionId String?
   /// Cancelamento agendado no Stripe (vale até o fim do período pago).
   subscriptionCancelAt DateTime?
+  /// Troca de dono por exclusão de conta: se a cobrança não estiver em dia nesta data, a assinatura é cancelada.
+  paymentGraceUntil    DateTime?
+  /// Empresa encerrada pela exclusão da conta do dono: sem membros, guarda só as propostas aceitas (comprovantes).
+  closedAt             DateTime?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   events               WorkspaceEvent[]
@@ -96,6 +115,9 @@ enum WorkspaceEventType {
   PAYMENT_DISPUTED
   PAYMENT_REFUNDED
   FRAUD_WARNING
+  /// Exclusão de conta do dono.
+  OWNERSHIP_TRANSFERRED
+  WORKSPACE_CLOSED
 }
 
 /// Avisos recebidos do Stripe (webhook), para o painel Ops e diagnóstico.
@@ -198,8 +220,9 @@ model WorkspaceInvite {
 
 model PaymentReceipt {
   id                   String           @id @default(cuid())
-  userId               String
-  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Nulo depois que a conta é excluída: o comprovante financeiro fica pelo prazo legal.
+  userId               String?
+  user                 User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   fileUrl              String
   storedFilename       String
   originalFilename     String
@@ -224,8 +247,9 @@ model PaymentReceipt {
 
 model Provider {
   id                  String     @id @default(cuid())
-  userId              String
-  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Quem criou o perfil. Nulo depois que a conta é excluída (o perfil pertence à empresa).
+  userId              String?
+  user                User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceId         String?
   workspace           Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name                String

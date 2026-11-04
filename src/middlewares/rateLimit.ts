@@ -19,6 +19,9 @@ export const authRateLimit = build(15 * 60 * 1000, 10)
 /** Endpoints públicos sem autenticação (visualizações, respostas de proposta). */
 export const publicWriteRateLimit = build(60 * 1000, 30)
 
+/** Ações sensíveis da própria conta (exportar dados, pedir código e excluir conta). */
+export const accountActionRateLimit = build(15 * 60 * 1000, 10)
+
 /** Uploads autenticados: protege disco/banda contra loop de cliente. */
 export const uploadRateLimit = build(60 * 1000, 30)
 

@@ -18,7 +18,11 @@ export const RETENTION_DAYS = {
     /** Conteúdo dos e-mails comuns já enviados ou que falharam. */
     emails: 90,
     /** Registro de avisos do Stripe (painel Ops). */
-    stripeEvents: 90
+    stripeEvents: 90,
+    /** Códigos de exclusão de conta (valem 10 minutos). */
+    deletionCodes: 2,
+    /** Empresa encerrada: as propostas aceitas (comprovantes) ficam 5 anos (prazo de prescrição, CC art. 206, §5º, I). */
+    closedWorkspaces: 5 * 365
 } as const
 
 /**
@@ -28,6 +32,7 @@ export const RETENTION_DAYS = {
 const SECRET_EMAIL_DAYS: Record<string, number> = {
     signature_code: 2,
     google_confirm: 2,
+    account_deletion_code: 2,
     team_invite: INVITE_TTL_DAYS + 1
 }
 
@@ -38,6 +43,8 @@ export type RetentionResult = {
     secretEmails: number
     scrubbedEmails: number
     stripeEvents: number
+    deletionCodes: number
+    closedWorkspaces: number
 }
 
 const daysAgo = (now: Date, days: number) => new Date(now.getTime() - days * DAY_MS)
@@ -69,12 +76,18 @@ export async function runDataRetention(now = new Date()): Promise<RetentionResul
 
     const stripeEvents = await prisma.stripeEventLog.deleteMany({ where: { receivedAt: { lt: daysAgo(now, RETENTION_DAYS.stripeEvents) } } })
 
+    const deletionCodes = await prisma.accountDeletionCode.deleteMany({ where: { createdAt: { lt: daysAgo(now, RETENTION_DAYS.deletionCodes) } } })
+    // Apaga a empresa encerrada inteira (perfil, propostas, aceites e assinaturas vão junto).
+    const closedWorkspaces = await prisma.workspace.deleteMany({ where: { closedAt: { lt: daysAgo(now, RETENTION_DAYS.closedWorkspaces) } } })
+
     return {
         signatureCodes: signatureCodes.count,
         googleConfirmations: googleConfirmations.count,
         expiredInvites: expiredInvites.count,
         secretEmails,
         scrubbedEmails,
-        stripeEvents: stripeEvents.count
+        stripeEvents: stripeEvents.count,
+        deletionCodes: deletionCodes.count,
+        closedWorkspaces: closedWorkspaces.count
     }
 }

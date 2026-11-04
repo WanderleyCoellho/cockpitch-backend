@@ -4,6 +4,7 @@ import { prisma } from './lib/prisma.js'
 import { startBillingReconciliationJob } from './jobs/billingReconciliation.job.js'
 import { startDataRetentionJob } from './jobs/dataRetention.job.js'
 import { startEmailOutboxJob } from './jobs/emailOutbox.job.js'
+import { startPaymentGraceJob } from './jobs/paymentGrace.job.js'
 import { ensureCatalogPrices, stripeMode } from './lib/stripe.js'
 
 // Rede de segurança: uma promise rejeitada fora do ciclo de requisição não derruba a API inteira.
@@ -20,6 +21,7 @@ const server = app.listen(env.PORT, () => {
     startBillingReconciliationJob()
     startEmailOutboxJob()
     startDataRetentionJob()
+    startPaymentGraceJob()
     // Cria (uma vez) os produtos/preços dos planos no Stripe; se a chave não estiver pronta, o checkout tenta de novo.
     ensureCatalogPrices()
         .then((prices) => console.log('[stripe] planos prontos', Object.fromEntries(Object.entries(prices).map(([tier, p]) => [tier, p.priceId]))))

@@ -100,6 +100,28 @@ describe('retenção de dados', () => {
         expect(rows[0]).toMatchObject({ template: 'proposal_opened', to: '', payload: {} })
     })
 
+    it('apaga códigos de exclusão de conta com mais de 2 dias', async () => {
+        const a = await createUser()
+        await prisma.accountDeletionCode.create({ data: { userId: a.user.id, codeHash: 'old', expiresAt: ago(3), createdAt: ago(3) } })
+        await prisma.accountDeletionCode.create({ data: { userId: a.user.id, codeHash: 'new', expiresAt: ago(0), createdAt: ago(1) } })
+
+        expect((await runDataRetention(now)).deletionCodes).toBe(1)
+        expect((await prisma.accountDeletionCode.findMany()).map((c) => c.codeHash)).toEqual(['new'])
+    })
+
+    it('empresa encerrada há mais de 5 anos sai inteira, com os comprovantes; as mais recentes ficam', async () => {
+        const old = await createUser('Antiga')
+        const recent = await createUser('Recente')
+        await prisma.proposal.create({ data: { providerId: old.provider.id, clientName: 'C', slug: 'antiga-1' } })
+        await prisma.workspace.update({ where: { id: old.workspace.id }, data: { closedAt: ago(5 * 365 + 1) } })
+        await prisma.workspace.update({ where: { id: recent.workspace.id }, data: { closedAt: ago(4 * 365) } })
+
+        expect((await runDataRetention(now)).closedWorkspaces).toBe(1)
+        expect(await prisma.workspace.count({ where: { id: old.workspace.id } })).toBe(0)
+        expect(await prisma.proposal.count({ where: { slug: 'antiga-1' } })).toBe(0)
+        expect(await prisma.workspace.count({ where: { id: recent.workspace.id } })).toBe(1)
+    })
+
     it('apaga avisos do Stripe com mais de 90 dias', async () => {
         await prisma.stripeEventLog.create({ data: { id: 'evt_old', type: 't', outcome: 'synced', receivedAt: ago(91) } })
         await prisma.stripeEventLog.create({ data: { id: 'evt_new', type: 't', outcome: 'synced', receivedAt: ago(5) } })

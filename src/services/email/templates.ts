@@ -43,6 +43,19 @@ export type EmailTemplates = {
     team_invite: Brand & { inviterName?: string | null; role: 'OWNER' | 'ADMIN' | 'MEMBER'; inviteUrl: string; expiresAt: string }
     /** Primeiro login com Google: confirmar o e-mail e criar a senha. `linking` = já existia conta com senha. */
     google_confirm: Brand & { name: string; confirmUrl: string; expiresHours: number; linking: boolean }
+    /** Código para confirmar a exclusão da própria conta. */
+    account_deletion_code: Brand & { name: string; code: string; expiresMinutes: number }
+    /** O dono anterior excluiu a conta e indicou esta pessoa. Datas em ISO; plano nulo = sem assinatura no Stripe. */
+    ownership_transferred: Brand & {
+        name: string
+        previousOwnerName: string
+        planName?: string | null
+        paidUntil?: string | null
+        graceUntil?: string | null
+        billingUrl: string
+    }
+    /** O dono excluiu a conta sem indicar outro dono: a empresa foi encerrada. */
+    workspace_closed: Brand & { name: string; panelUrl: string }
 }
 
 export type TemplateName = keyof EmailTemplates
@@ -65,6 +78,10 @@ function safeUrl(url: string) {
 
 export function formatCents(cents: number) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100)
+}
+
+function formatDate(iso: string) {
+    return new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'long' })
 }
 
 function formatDateTime(iso: string) {
@@ -233,6 +250,44 @@ export function renderEmail<T extends TemplateName>(template: T, payload: EmailT
                 ]
                     .filter(Boolean)
                     .join('\n\n')
+            }
+        }
+        case 'account_deletion_code': {
+            const p = payload as EmailTemplates['account_deletion_code']
+            return {
+                subject: `${p.code} é o código para excluir sua conta`,
+                html: layout(
+                    p,
+                    `<p style="margin:0 0 12px">Olá, ${esc(p.name.split(' ')[0])}! Use este código para confirmar a exclusão da sua conta no Lumen Deal:</p>
+                     <p style="margin:0 0 12px;font-size:28px;font-weight:700;letter-spacing:.3em">${esc(p.code)}</p>
+                     <p style="margin:0;color:#5c5850">Vale por ${p.expiresMinutes} minutos. A exclusão não pode ser desfeita. Se não foi você que pediu, troque sua senha: alguém pode estar usando sua conta.</p>`
+                ),
+                text: `Código para excluir sua conta no Lumen Deal: ${p.code}\n\nVale por ${p.expiresMinutes} minutos. A exclusão não pode ser desfeita. Se não foi você que pediu, troque sua senha.`
+            }
+        }
+        case 'ownership_transferred': {
+            const p = payload as EmailTemplates['ownership_transferred']
+            const lines: string[] = [`${p.previousOwnerName} excluiu a conta no Lumen Deal e indicou você como dono(a) de ${p.companyName}.`]
+            if (p.planName && p.paidUntil) lines.push(`O plano ${p.planName} está pago até ${formatDate(p.paidUntil)} e continua valendo até lá.`)
+            if (p.planName && p.graceUntil) {
+                lines.push(
+                    `A forma de pagamento do dono anterior foi removida. Cadastre a sua em Plano e cobrança até ${formatDate(p.graceUntil)}; depois disso, sem pagamento em dia, a empresa volta para o plano Grátis.`
+                )
+            }
+            if (!p.planName) lines.push('A empresa está no plano Grátis. Você pode assinar um plano quando quiser em Plano e cobrança.')
+            return {
+                subject: `Você agora é dono(a) de ${p.companyName} no Lumen Deal`,
+                html: layout(p, lines.map((line) => `<p style="margin:0 0 12px">${esc(line)}</p>`).join(''), { label: 'Abrir Plano e cobrança', url: p.billingUrl }),
+                text: [...lines, `Plano e cobrança: ${p.billingUrl}`].join('\n\n')
+            }
+        }
+        case 'workspace_closed': {
+            const p = payload as EmailTemplates['workspace_closed']
+            const body = `O dono de ${p.companyName} excluiu a conta no Lumen Deal e a empresa foi encerrada. Sua conta continua ativa: no próximo acesso, você pode criar uma empresa nova, no plano Grátis.`
+            return {
+                subject: `${p.companyName} foi encerrada no Lumen Deal`,
+                html: layout(p, `<p style="margin:0">${esc(body)}</p>`, { label: 'Entrar no Lumen Deal', url: p.panelUrl }),
+                text: `${body}\n\nEntrar: ${p.panelUrl}`
             }
         }
     }
