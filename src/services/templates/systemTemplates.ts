@@ -5,7 +5,7 @@ import type { ProposalBlock } from '../blocks.js'
  * Modelos do sistema (um ou mais por segmento). Ficam no código, versionados, e não no banco.
  * Placeholders trocados na exibição: {cliente} e {empresa}.
  *
- * Ordem dos blocos nos modelos novos (pesquisa de mercado, ver specs/proposal-templates.md):
+ * Ordem dos blocos nos modelos novos (pesquisa de mercado, ver specs_concluidas/proposal-templates.md na pasta do projeto):
  * capa → o momento do cliente → escopo → etapas → provas (portfólio, equipe, depoimentos)
  * → investimento → dúvidas → chamada/contato → condições → aceite. Valor antes do preço.
  */

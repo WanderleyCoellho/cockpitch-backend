@@ -9,7 +9,7 @@ import { enqueueEmails, kickEmailDispatch } from './email/outbox.js'
 import { contentHashFor } from './content-hash.js'
 
 /**
- * Assinatura eletrônica da proposta (spec specs/digital-signature.md).
+ * Assinatura eletrônica da proposta (spec specs_concluidas/digital-signature.md, na pasta do projeto).
  * Quem assina — empresa ou cliente — informa CPF, desenha ou digita a assinatura e confirma o e-mail
  * com um código de 6 dígitos. Guardamos a evidência e o código (SHA-256) do conteúdo assinado.
  */
