@@ -48,8 +48,7 @@ npm test
 
 ## Especificações
 
-Roadmap e decisões de arquitetura em [`specs/`](specs/) — comece por
-[`specs/_context.md`](specs/_context.md) e [`specs/EXECUTAR-TODAS.md`](specs/EXECUTAR-TODAS.md).
+Roadmap e decisões de arquitetura ficam na pasta do projeto, fora dos repositórios: `specs/` (contexto `_context.md`, roteiro `EXECUTAR-TODAS.md` e specs em andamento) e `specs_concluidas/` (specs implementadas). Comece por `specs/_context.md`.
 
 ## Workspaces, papéis e planos
 
